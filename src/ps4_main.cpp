@@ -18,6 +18,7 @@
 #include <Adafruit_SSD1306.h>
 
 #include "DifferentialSteering.h"
+#include "tracked_stick.h"
 
 #include <esp_system.h>
 
@@ -586,67 +587,17 @@ void loop()
 
     LStickXvalue = PS4.LStickX();
 
-    // Steering dead zone
-    if (LStickXvalue > 4 || LStickXvalue < -4)
-    {
-        XValue = LStickXvalue;
+    int y = 0;
+    if (PS4.R2()) {
+        y = map(PS4.R2Value(), 0, 255, 0, 127);
     }
-    else
-    {
-        XValue = 0;
+    if (PS4.L2()) {
+        y = map(PS4.L2Value(), 0, 255, 0, -127);
     }
 
-    // Forward throttle
-    if (PS4.R2())
-    {
-        YValue = map(
-            PS4.R2Value(),
-            0,
-            255,
-            0,
-            115
-        );
-    }
-
-    // Reverse throttle overrides forward throttle
-    if (PS4.L2())
-    {
-        YValue = map(
-            PS4.L2Value(),
-            0,
-            255,
-            0,
-            -115
-        );
-    }
-
-    // No throttle
-    if (!PS4.R2() && !PS4.L2())
-    {
-        YValue = 0;
-    }
-
-    // -------------------------------------------------------------------------
-    // Differential steering
-    // -------------------------------------------------------------------------
-
-    if ((XValue >= -127) && (XValue <= 127) &&
-        (YValue >= -115) && (YValue <= 115))
-    {
-        DiffSteer.computeMotors(
-            XValue,
-            YValue
-        );
-
-        l_speed = DiffSteer.computedLeftMotor();
-        r_speed = DiffSteer.computedRightMotor();
-    }
-    else
-    {
-        // Safety fallback
-        l_speed = 0;
-        r_speed = 0;
-    }
+    tracked_stick_to_motors(DiffSteer, LStickXvalue, y, l_speed, r_speed);
+    XValue = tracked_stick_deadzone((LStickXvalue <= -128) ? -127 : LStickXvalue, 8);
+    YValue = y;
 
     // -------------------------------------------------------------------------
     // Gyro assist

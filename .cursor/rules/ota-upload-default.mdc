@@ -1,0 +1,23 @@
+---
+description: Default to OTA firmware upload for tracked-bot — never USB unless user asks
+alwaysApply: true
+---
+
+# Firmware upload — OTA first
+
+When the user needs to flash tracked-bot WiFi firmware, **always give the OTA command**:
+
+```bash
+cd tracked-bot
+pio run -e tracked_wifi_ota -t upload
+```
+
+- Hostname: `tracked-bot.local` (set `upload_port` + `BOT_OTA_HOSTNAME` in `platformio_private.ini`)
+- Bot must be on WiFi with OTA-capable firmware already running
+- First-ever flash: USB `tracked_wifi_ota_usb` on the TinyC6, then OTA only
+
+Do not suggest USB unless user explicitly asks.
+
+## Safety — bot must be stopped
+
+**Never OTA while the bot is moving.** Stop `tracked-brain`, zero `/bot2/cmd_vel`, confirm tracks still, or get Cain's OK.

@@ -1,0 +1,15 @@
+; Copy to platformio_private.ini — not committed.
+
+[wifi]
+build_flags =
+  -DWIFI_SSID=\"YourSSID\"
+  -DWIFI_PSK=\"YourPassword\"
+  -DAGENT_IP=\"192.168.2.31\"
+  -DAGENT_PORT=8888
+  -DBOT_NAMESPACE=\"bot2\"
+  -DBOT_NODE_NAME=\"tracked_bot\"
+
+[ota]
+build_flags =
+  -DBOT_OTA_HOSTNAME=\"tracked-bot\"
+upload_port = 192.168.3.202

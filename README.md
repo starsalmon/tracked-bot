@@ -1,55 +1,48 @@
-# Robot - pioarduino / NodeMCU-32S
+# Tracked bot — dockerhost swarm client
 
-Converted from the original ESP32 Arduino project.
+**Unexpected Maker TinyC6** (ESP32-C6) + **DRV8833** tracks. Thin client: dockerhost `tracked-brain` sends `/bot2/cmd_vel`; PWM ramp, 400 ms timeout, ToF forward brake, and nSLEEP stay on the ESP.
 
-## Hardware
+TinyC6 is the space/power board: **400 mAh** on the BAT JST (ESP + sensors + solar tilt), **500 mAh** through a boost 5 V rail (motors). H-bridge off when stopped. **No PS4** on this chip (C6 is BLE-only). The old NodeMCU-32S + DualShock env is still `nodemcu-32s` if you need a pad on the bench.
 
-- NodeMCU-32S / classic ESP32
-- DRV8833 dual motor driver
-- PS4 controller
-- MPU6050 (currently disabled)
-- SSD1306 128x32 OLED (currently disabled)
+MPU-6050 and BH1750 share I2C **6/7** with the OLED. ToF is optional until you plug the VL53L0X in. IR comm (**14/17**) and side IR (**18/19**) are reserved — see `WIRING.md`.
 
-## Current pin assignment
+## Fleet
 
-### DRV8833
+| | |
+|--|--|
+| ROS namespace | `/bot2/…` |
+| Agent | dockerhost UDP **8888** |
+| Brain | `tracked-brain` → `explore_then_chase.py` with `BOT_NS=bot2` |
+| Topics | `/bot2/cmd_vel` (sub), `/bot2/imu`, `/bot2/als/illuminance`, `/bot2/sonar/range`, `/bot2/battery/voltage` (400 mAh), `/bot2/battery/motor_voltage` (500 mAh), `/bot2/power/boost_5v`, `/bot2/ir/detected`, `/bot2/stall` |
 
-| ESP32 | DRV8833 |
-|---:|---|
-| GPIO 27 | AIN1 |
-| GPIO 26 | AIN2 |
-| GPIO 32 | BIN1 |
-| GPIO 33 | BIN2 |
+No Go button — **tracked-brain wanders as soon as the bot is on WiFi and ROS is up** (and Allow drive is on). Slow crawl without ToF (`WANDER_BLIND_CRUISE`). ESP hard-brakes forward if ToF is under 12 cm.
 
-The DRV8833 is driven using PWM directly on IN1/IN2. There are no separate motor-enable pins.
+OLED HUD: namespace, WiFi, ROS, IMU, battery, ToF, lux, cmd_vel.
 
-Make sure the DRV8833 nSLEEP input is held HIGH according to the breakout board's wiring. If your particular board exposes nSLEEP without a pull-up, it will need to be connected to 3.3 V or assigned a GPIO.
+Pins: `WIRING.md`.
 
-## Optional hardware switches
+## Flash
 
-In `src/main.cpp`:
+**First time (USB)** — new TinyC6, or after a partition change. Same firmware as OTA; the USB env reuses that micro-ROS library (do not rebuild it from scratch):
 
-```cpp
-#define MPU_ENABLED 0
-#define OLED_ENABLED 0
+```bash
+cd tracked-bot
+pio run -e tracked_wifi_ota_usb -t upload
 ```
 
-Set either to `1` when the corresponding hardware is connected.
+**After that (OTA) — bot must be stopped:**
 
-The libraries remain in `platformio.ini` and the code remains in the project. With both set to `0`, the ESP32 will not attempt to initialise either device.
+```bash
+pio run -e tracked_wifi_ota -t upload
+```
 
-## PS4
+Hostname: `tracked-bot.local`. WiFi + agent: `platformio_private.ini`.
 
-The original controller pairing address is retained:
+## Envs
 
-`48:b0:2d:37:2d:4c`
-
-If the controller was paired to a different ESP32 Bluetooth address, this may need to be changed.
-
-## Important conversion notes
-
-1. The old L293D-style `enableA/enableB` PWM arrangement has been replaced by DRV8833 IN1/IN2 PWM.
-2. The old ESP32 `ledcSetup()` / `ledcAttachPin()` API has been replaced with the current pin-based LEDC API (`ledcAttach()` / `ledcWrite()`).
-3. The original differential-steering condition was inverted, meaning the calculation normally did not run. It has been corrected to the intended valid-range test.
-4. The original motor dead-band compensation (minimum PWM 150/255) has been retained.
-5. A controller disconnect now immediately stops the motors.
+| Env | Use |
+|-----|-----|
+| `tracked_wifi_ota` | **Default** — TinyC6 fleet + OTA |
+| `tracked_wifi_ota_usb` | First USB flash of that firmware |
+| `tracked_wifi` | USB, no OTA server in firmware |
+| `nodemcu-32s` | Legacy NodeMCU-32S + PS4, no ROS |
