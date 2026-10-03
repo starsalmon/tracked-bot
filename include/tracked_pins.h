@@ -49,10 +49,10 @@
 #endif
 
 #ifndef MOTOR_A_IN1
-#define MOTOR_A_IN1 16  // left
+#define MOTOR_A_IN1 17  // left
 #endif
 #ifndef MOTOR_A_IN2
-#define MOTOR_A_IN2 17
+#define MOTOR_A_IN2 16
 #endif
 #ifndef MOTOR_B_IN1
 #define MOTOR_B_IN1 8  // right (C6 strap — PWM idle LOW at boot)

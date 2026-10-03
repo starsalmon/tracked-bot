@@ -24,8 +24,8 @@ MPU-6050 is on the same I2C as the OLED. ToF can stay unplugged (`ToF --` until 
 | **10** | VBUS / boost 5 V sense | USB **or** boost 5 V into the TinyC6 5 V pin |
 | **11** | **Side IR R** | Digital proximity, active LOW, pull-up |
 | **15** | **Side IR L** | Same |
-| **16** | DRV8833 **AIN1** | Left track (board silk **TX**) |
-| **17** | DRV8833 **AIN2** | Left (board silk **RX** silk is unrelated — IR RX is GPIO **1**) |
+| **17** | DRV8833 **AIN1** | Left track |
+| **16** | DRV8833 **AIN2** | Left (board silk **TX**) |
 | **18** | **IR TX** | 38 kHz fleet ID beacon |
 | **22** | RGB power | Onboard — firmware drives this |
 | **23** | RGB data | Onboard NeoPixel — do not reuse |
@@ -38,8 +38,8 @@ Onboard ESP **ADC** voltage taps (GPIO **4** VBAT, old GPIO **5** pack divider, 
 
 | TinyC6 | DRV8833 |
 |------:|---------|
-| GPIO **16** | AIN1 (left) |
-| GPIO **17** | AIN2 |
+| GPIO **17** | AIN1 (left) |
+| GPIO **16** | AIN2 |
 | GPIO **8** | BIN1 (right) |
 | GPIO **9** | BIN2 |
 | **3.3 V** | **nSLEEP** | Jumper **nSLEEP → 3.3 V** — bridge always awake; firmware does **not** toggle nSLEEP |
@@ -77,7 +77,7 @@ Bot-to-bot ID (all fleet members, different behaviour when they meet) and side b
 
 | Role | GPIO | Notes |
 |------|------|--------|
-| IR comm **TX** | **18** | IR LED + resistor (transistor optional). **Not GPIO14** — not bonded on TinyC6. **Not GPIO16** — that is left motor IN1 / board **TX** silk. |
+| IR comm **TX** | **18** | IR LED + resistor (transistor optional). **Not GPIO14** — not bonded on TinyC6. **Not GPIO16** — that is left motor AIN2 / board **TX** silk. |
 | IR comm **RX** | **1** | TSOP-style 38 kHz demod, OUT → GPIO, VCC 3.3 V |
 | Side proximity **L** | **15** | Digital, **LOW = hit**. Firmware pull-up. |
 | Side proximity **R** | **11** | Same |
