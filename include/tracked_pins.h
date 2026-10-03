@@ -1,14 +1,17 @@
 #pragma once
 
 // Unexpected Maker TinyC6 (ESP32-C6) — DRV8833 tracks.
-// Source of truth: WIRING.md. Do not use GPIO 0/1 (32 kHz crystal).
+// Source of truth: WIRING.md.
+// GPIO 0 = solar servo signal, GPIO 1 = fleet IR RX (32 kHz crystal pins — now assigned).
 
 #ifndef I2C_SDA_PIN
-#define I2C_SDA_PIN 6  // TinyC6 SDA — OLED + MPU + BH1750 + ToF
+#define I2C_SDA_PIN 6  // TinyC6 SDA — OLED + MPU + BH1750 + ToF (+ future ADS1115)
 #endif
 #ifndef I2C_SCL_PIN
 #define I2C_SCL_PIN 7  // TinyC6 SCL
 #endif
+
+// Future ADS1115 on this I2C bus (no driver yet): A2 = battery, A3 = solar, A0/A1 = photodiodes.
 
 #ifndef MPU6050_ADDR
 #define MPU6050_ADDR 0x68
@@ -18,13 +21,11 @@
 #endif
 
 // Bot-to-bot IR ID. TinyC6 has no GPIO14 on the header (not bonded out).
-// GPIO16 = DRV8833 nSLEEP — do not use for IR TX (board silk "TX" pin).
-// GPIO8 is a header pin; strapping — keep IR LED off at boot (firmware idles LOW).
 #ifndef IR_TX_PIN
-#define IR_TX_PIN 8
+#define IR_TX_PIN 18
 #endif
 #ifndef IR_RX_PIN
-#define IR_RX_PIN 17  // TSOP / demod (LOW = carrier seen); board silk "RX"
+#define IR_RX_PIN 1  // TSOP / demod (LOW = carrier seen)
 #endif
 #ifndef IR_TX_HZ
 #define IR_TX_HZ 38000
@@ -41,29 +42,25 @@
 
 // Side IR proximity (digital, active LOW). Pull-ups on; unused = HIGH.
 #ifndef IR_SIDE_L_PIN
-#define IR_SIDE_L_PIN 18
+#define IR_SIDE_L_PIN 15
 #endif
 #ifndef IR_SIDE_R_PIN
-#define IR_SIDE_R_PIN 19
+#define IR_SIDE_R_PIN 11
 #endif
 
 #ifndef MOTOR_A_IN1
-#define MOTOR_A_IN1 2  // left
+#define MOTOR_A_IN1 17  // left
 #endif
 #ifndef MOTOR_A_IN2
-#define MOTOR_A_IN2 3
+#define MOTOR_A_IN2 16
 #endif
 #ifndef MOTOR_B_IN1
-#define MOTOR_B_IN1 20  // right
+#define MOTOR_B_IN1 8  // right (C6 strap — PWM idle LOW at boot)
 #endif
 #ifndef MOTOR_B_IN2
-#define MOTOR_B_IN2 21
+#define MOTOR_B_IN2 9  // right (C6 strap)
 #endif
-// DRV8833 nSLEEP — HIGH = run, LOW = coast/sleep the H-bridge.
-// Not wired yet? Jumper chip nSLEEP → 3.3 V; firmware still toggles GPIO16 when you wire it.
-#ifndef MOTOR_NSLEEP_PIN
-#define MOTOR_NSLEEP_PIN 16
-#endif
+// DRV8833 nSLEEP — tie HIGH to 3.3 V in hardware; firmware does not drive a GPIO for it.
 
 #ifndef TRACK_PWM_HZ
 #define TRACK_PWM_HZ 30000
@@ -122,27 +119,6 @@
 #define RGB_DATA_PIN 23
 #endif
 
-// TinyC6 VBAT_SENSE GPIO4 — onboard 1:1 divider (pack/2). ADC 11 dB (~3.1 V max at pin).
-#ifndef VBAT_PIN
-#define VBAT_PIN 4
-#endif
-#ifndef VBAT_DIVIDER
-#define VBAT_DIVIDER 2.0f
-#endif
-#ifndef VBAT_CAL
-#define VBAT_CAL 1.0f
-#endif
-
-// Last free C6 ADC (GPIO 0–6 except crystal/motors/I2C/onboard VBAT). Strap-safe if divider is weak (≥47 k).
-#ifndef PACK2_PIN
-#define PACK2_PIN 5  // 500 mAh pack divider midpoint
-#endif
-#ifndef PACK2_DIVIDER
-#define PACK2_DIVIDER 2.0f  // same idea as onboard VBAT; DMM-check PACK2_CAL
-#endif
-#ifndef PACK2_CAL
-#define PACK2_CAL 1.0f
-#endif
 #ifndef VBUS_SENSE_PIN
 #define VBUS_SENSE_PIN 10  // TinyC6 VBUS — digital HIGH when 5 V (USB or boost) is in. Not ADC.
 #endif
@@ -150,12 +126,12 @@
 // Solar panel tilt — 3.3 V rail so it still works when the 500 mAh / boost 5 V is dead.
 // PWM not attached yet (no hunt loop). Small slow servo only; stall current can brown out the C6.
 #ifndef SOLAR_SERVO_PIN
-#define SOLAR_SERVO_PIN 11
+#define SOLAR_SERVO_PIN 0
 #endif
 
-// Passive piezo — GPIO15 (6th LEDC slot after 4× motor + IR TX on C6).
+// Passive piezo — SPEAKER_LEDC_CH is an LEDC slot, not a GPIO.
 #ifndef SPEAKER_PIN
-#define SPEAKER_PIN 15
+#define SPEAKER_PIN 5
 #endif
 #ifndef SPEAKER_LEDC_CH
 #define SPEAKER_LEDC_CH 5

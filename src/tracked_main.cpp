@@ -81,7 +81,7 @@ void ir_pins_begin() {
 
 bool comm_ir_active() { return digitalRead(IR_RX_PIN) == LOW; }
 
-// TSOP sees our own GPIO8 beacon — ignore RX while we are in a TX frame.
+// TSOP sees our own IR TX beacon — ignore RX while we are in a TX frame.
 bool fleet_rx_carrier() {
   if (ir_beacon.in_tx_frame()) {
     return false;
@@ -174,33 +174,12 @@ void apply_drive() {
   drive.set_twist(lin, last_ang);
 }
 
-void adc_begin_pin(int pin) {
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);  // ~0–3.1 V at the pin (not 0 dB ~1.1 V)
-  (void)analogReadMilliVolts(pin);  // attach ADC channel first
-  analogSetPinAttenuation(pin, ADC_11db);
-}
-
-float read_adc_scaled(int pin, float divider, float cal) {
-  analogSetPinAttenuation(pin, ADC_11db);
-  uint32_t mv_sum = 0;
-  constexpr int kN = 8;
-  for (int i = 0; i < kN; i++) {
-    mv_sum += analogReadMilliVolts(pin);
-  }
-  const float vadc = (mv_sum / static_cast<float>(kN)) * 0.001f;
-  if (vadc < 0.05f) {
-    return -1.0f;
-  }
-  return vadc * divider * cal;
-}
-
 float read_vbat() {
-  return read_adc_scaled(VBAT_PIN, VBAT_DIVIDER, VBAT_CAL);
+  return -1.0f;  // onboard ESP ADC taps removed — future ADS1115 on I2C
 }
 
 float read_pack2() {
-  return read_adc_scaled(PACK2_PIN, PACK2_DIVIDER, PACK2_CAL);
+  return -1.0f;
 }
 
 bool read_boost_5v() {
@@ -537,8 +516,6 @@ void setup() {
 
   pinMode(VBUS_SENSE_PIN, INPUT);
   pinMode(SOLAR_SERVO_PIN, INPUT);
-  adc_begin_pin(VBAT_PIN);
-  adc_begin_pin(PACK2_PIN);
   imu_ok = imu.begin(MPU6050_ADDR);
   if (!imu_ok) {
     Serial.println("WARN: MPU6050 not found on I2C 6/7");
