@@ -9,9 +9,6 @@ constexpr float kEps = 0.02f;
 }  // namespace
 
 bool DriveTracks::begin() {
-  pinMode(MOTOR_NSLEEP_PIN, OUTPUT);
-  digitalWrite(MOTOR_NSLEEP_PIN, LOW);
-
   pinMode(MOTOR_A_IN1, OUTPUT);
   pinMode(MOTOR_A_IN2, OUTPUT);
   pinMode(MOTOR_B_IN1, OUTPUT);
@@ -32,7 +29,7 @@ bool DriveTracks::begin() {
 }
 
 void DriveTracks::sleep_bridge(bool sleep) {
-  digitalWrite(MOTOR_NSLEEP_PIN, sleep ? LOW : HIGH);
+  (void)sleep;  // nSLEEP tied HIGH in hardware — no GPIO
 }
 
 void DriveTracks::stop() {
@@ -44,7 +41,6 @@ void DriveTracks::stop() {
   ledcWrite(MOTOR_A_IN2, 0);
   ledcWrite(MOTOR_B_IN1, 0);
   ledcWrite(MOTOR_B_IN2, 0);
-  sleep_bridge(true);
 }
 
 bool DriveTracks::moving() const {
@@ -79,9 +75,6 @@ void DriveTracks::set_targets(float left, float right) {
   if (right < -1.0f) right = -1.0f;
   _tgt_l = left;
   _tgt_r = right;
-  if (fabsf(left) > kEps || fabsf(right) > kEps) {
-    sleep_bridge(false);
-  }
 }
 
 uint8_t DriveTracks::speed_to_duty(float speed) const {
@@ -138,7 +131,4 @@ void DriveTracks::tick() {
   _cur_r = ramp_toward(_cur_r, _tgt_r, dt);
   write_side(MOTOR_A_IN1, MOTOR_A_IN2, _cur_l);
   write_side(MOTOR_B_IN1, MOTOR_B_IN2, _cur_r);
-  if (!moving() && fabsf(_tgt_l) <= kEps && fabsf(_tgt_r) <= kEps) {
-    sleep_bridge(true);
-  }
 }
