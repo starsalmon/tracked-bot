@@ -49,16 +49,16 @@
 #endif
 
 #ifndef MOTOR_A_IN1
-#define MOTOR_A_IN1 17  // left
+#define MOTOR_A_IN1 8  // left (was right pins; C6 strap — PWM idle LOW at boot)
 #endif
 #ifndef MOTOR_A_IN2
-#define MOTOR_A_IN2 16
+#define MOTOR_A_IN2 9
 #endif
 #ifndef MOTOR_B_IN1
-#define MOTOR_B_IN1 8  // right (C6 strap — PWM idle LOW at boot)
+#define MOTOR_B_IN1 17  // right (was left pins)
 #endif
 #ifndef MOTOR_B_IN2
-#define MOTOR_B_IN2 9  // right (C6 strap)
+#define MOTOR_B_IN2 16
 #endif
 // DRV8833 nSLEEP — tie HIGH to 3.3 V in hardware; firmware does not drive a GPIO for it.
 
@@ -81,7 +81,7 @@
 #define TRACK_INVERT_LEFT 0
 #endif
 #ifndef TRACK_INVERT_RIGHT
-#define TRACK_INVERT_RIGHT 0
+#define TRACK_INVERT_RIGHT 1
 #endif
 
 #ifndef TRACK_ACCEL_PER_S
