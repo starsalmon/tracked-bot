@@ -795,6 +795,21 @@ void setup() {
   }
   // Join Wi-Fi ourselves with progress logging (the library call blocks forever, silently).
   {
+    // Pre-scan + reduced TX power: at default power the board looped on auth/assoc timeouts
+    // (reasons 2/3/4) here; with 8.5 dBm it joins immediately.
+    WiFi.mode(WIFI_STA);
+    {
+      const int n = WiFi.scanNetworks();
+      Serial.printf("pre-scan: %d networks\n", n);
+      for (int i = 0; i < n; i++) {
+        if (WiFi.SSID(i) == String(WIFI_SSID)) {
+          Serial.printf("  AP '%s' ch %d rssi %d bssid %s\n", WIFI_SSID, WiFi.channel(i), WiFi.RSSI(i), WiFi.BSSIDstr(i).c_str());
+        }
+      }
+      WiFi.scanDelete();
+    }
+    Serial.printf("MAC %s\n", WiFi.macAddress().c_str());
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
       Serial.printf("  WiFi STA disconnected, reason=%d\n", static_cast<int>(info.wifi_sta_disconnected.reason));
     }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
