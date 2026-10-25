@@ -17,7 +17,7 @@ MPU-6050 is on the same I2C as the OLED. ToF can stay unplugged (`ToF --` until 
 | **0** | **Solar tilt servo** | Signal. Power from TinyC6 **3.3 V** |
 | **1** | **IR RX** | TSOP / 38 kHz demod (fleet peer ID) |
 | **5** | **Speaker** | Passive piezo (LEDC) |
-| **6** | I2C SDA | OLED + **MPU-6050** + BH1750 + ToF (+ future **ADS1115**) |
+| **6** | I2C SDA | OLED + **MPU-6050** + BH1750 + ToF + **ADS1115** |
 | **7** | I2C SCL | Same bus |
 | **8** | DRV8833 **BIN1** | Right track (C6 strap — idle LOW at boot) |
 | **9** | DRV8833 **BIN2** | Right |
@@ -30,7 +30,7 @@ MPU-6050 is on the same I2C as the OLED. ToF can stay unplugged (`ToF --` until 
 | **22** | RGB power | Onboard — firmware drives this |
 | **23** | RGB data | Onboard NeoPixel — do not reuse |
 
-Onboard ESP **ADC** voltage taps (GPIO **4** VBAT, old GPIO **5** pack divider, etc.) are **not** used in this harness. Pack/battery/solar/photodiode analog will move to an **ADS1115** on I2C when added: **A2** battery, **A3** solar, **A0** / **A1** photodiodes (no firmware driver yet).
+Onboard ESP **ADC** voltage taps (GPIO **4** VBAT, old GPIO **5** pack divider, etc.) are **not** used in this harness. Pack/battery/solar/photodiode analog is on an **ADS1115** on I2C (see below).
 
 ---
 
@@ -55,7 +55,7 @@ GPIO10 is a 5 V-present flag for the OLED/brain only — it does not block `/cmd
 
 ---
 
-## I2C (OLED / MPU / ToF / future ADS1115)
+## I2C (OLED / MPU / ToF / ADS1115)
 
 | Device | Addr | TinyC6 |
 |--------|------|--------|
@@ -63,7 +63,7 @@ GPIO10 is a 5 V-present flag for the OLED/brain only — it does not block `/cmd
 | **MPU-6050** | **0x68** | Same bus. AD0 → GND. INT unused. 3.3 V only. |
 | **BH1750** ALS | **0x23** | Same bus. ADDR → GND (or 3.3 V for **0x5C**). 3.3 V only. |
 | VL53L0X (later) | **0x29** | Same bus, 3.3 V, XSHUT floating |
-| ADS1115 (later) | TBD | Same bus — A2 bat, A3 solar, A0/A1 photodiodes |
+| ADS1115 | 0x48–0x4B (auto-probed) | Same bus — see ADS1115 channels |
 
 OLED HUD shows `IMU` when the MPU ACKs, and lux on the ToF line when the BH1750 ACKs (`120lx`). `/bot2/imu` and `/bot2/als/illuminance`. If yaw looks flipped, set `IMU_GYRO_Z_SIGN` to `-1` in `tracked_pins.h`.
 
@@ -107,7 +107,7 @@ While boost 5 V is present, the TinyC6 charger keeps the **400 mAh** topped up f
                  ↑ charged from 5 V whenever boost (or USB) is in
 ```
 
-GPIO **10** is a **digital** 5 V-present flag (not ADC — analog on this pin panics the C6). OLED may show `5V` or `bat` from that flag; pack voltages wait on ADS1115.
+GPIO **10** is a **digital** 5 V-present flag (not ADC — analog on this pin panics the C6). OLED may show `5V` or `bat` from that flag; pack voltages come from the ADS1115.
 
 Do not pull track current through the TinyC6 BAT JST.
 
@@ -117,7 +117,7 @@ Do not pull track current through the TinyC6 BAT JST.
 
 Signal **GPIO 0**. **VCC = TinyC6 3.3 V**, GND common. That way the panel can still hunt after the motor pack dies.
 
-Use a **small** analog servo and **slow** steps. The C6 3.3 V rail is shared with the MCU — a stalling 9 g servo can brown out the board. Firmware does **not** drive the servo yet (no hunt loop); pin is reserved, left idle.
+Use a **small** analog servo and **slow** steps. The C6 3.3 V rail is shared with the MCU — a stalling 9 g servo can brown out the board. Firmware moves it to 90 (flat) at boot and takes clamped 45–125 commands (no sun-seeking yet).
 
 BH1750 on the panel (or nearby) is the light sensor for that hunt later.
 
@@ -134,3 +134,22 @@ Onboard NeoPixel: dim blue = ROS idle, green = moving, amber = OTA. RGB power is
 ## micro-ROS
 
 Same as before: WiFi → dockerhost UDP **8888**, namespace `/bot2`. Brain is `tracked-brain`. First flash is **USB** (`tracked_wifi_ota_usb`); after that OTA to `tracked-bot.local` with the bot **stopped**.
+
+## ADS1115 channels
+
+| Ch | Signal | Front end | Topic |
+|----|--------|-----------|-------|
+| A0 | Main battery (1S 800 mAh LiPo) | 100k top / 100k bottom (x2.0) | `/bot2/power/battery_v` (real V) |
+| A1 | Solar panel (6 V) | 100k top / 47k bottom (x3.128) | `/bot2/power/solar_v` (real V) |
+| A2 | Left BPW34 | 4.7k load to GND | `/bot2/light/left_v` (pin V) |
+| A3 | Right BPW34 | 4.7k load to GND | `/bot2/light/right_v` (pin V) |
+
+Gain +-4.096 V. If the ADS1115 is missing, firmware logs once at boot and publishes none of these.
+
+## Solar tilt servo limits
+
+45 = panel 45 deg left, 90 = flat (boot position), 125 = 45 deg right. `/bot2/solar/servo_deg` (Float32) is clamped to 45–125.
+
+## Side IR
+
+Binary IR proximity, trips at ~5 cm. `/bot2/side/left`, `/bot2/side/right` (Bool, true = object close).

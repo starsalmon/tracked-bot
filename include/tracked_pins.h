@@ -1,4 +1,7 @@
 #pragma once
+#ifdef TRACKED_PINS_S3
+#include "tracked_pins_s3.h"
+#endif
 
 // Unexpected Maker TinyC6 (ESP32-C6) — DRV8833 tracks.
 // Source of truth: WIRING.md.
@@ -11,7 +14,14 @@
 #define I2C_SCL_PIN 7  // TinyC6 SCL
 #endif
 
-// Future ADS1115 on this I2C bus (no driver yet): A2 = battery, A3 = solar, A0/A1 = photodiodes.
+// ADS1115 on this I2C bus: A0 = main battery, A1 = solar panel, A2 = left BPW34, A3 = right BPW34.
+// Address auto-probed 0x48..0x4B at boot. A0 1S LiPo 100k/100k (x2.0), A1 6 V panel 100k top/47k bottom (x3.128); BPW34s 4.7k load, raw pin V.
+#ifndef ADS_BATT_DIVIDER
+#define ADS_BATT_DIVIDER 2.0f
+#endif
+#ifndef ADS_SOLAR_DIVIDER
+#define ADS_SOLAR_DIVIDER 3.128f
+#endif
 
 #ifndef MPU6050_ADDR
 #define MPU6050_ADDR 0x68
@@ -124,10 +134,14 @@
 #endif
 
 // Solar panel tilt — 3.3 V rail so it still works when the 500 mAh / boost 5 V is dead.
-// PWM not attached yet (no hunt loop). Small slow servo only; stall current can brown out the C6.
+// Small slow servo only; stall current can brown out the C6.
 #ifndef SOLAR_SERVO_PIN
 #define SOLAR_SERVO_PIN 0
 #endif
+// 45 = panel 45 deg left, 90 = flat (boot), 125 = 45 deg right. Every command is clamped.
+#define SOLAR_SERVO_MIN_DEG 45
+#define SOLAR_SERVO_MAX_DEG 125
+#define SOLAR_SERVO_CENTER_DEG 90
 
 // Passive piezo — SPEAKER_LEDC_CH is an LEDC slot, not a GPIO.
 #ifndef SPEAKER_PIN

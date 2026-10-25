@@ -44,7 +44,7 @@ def _reuse_or_drop_stale_microros():
         print("micro-ROS: linked", pioenv, "→", sibling.parent.name)
         return
 
-    if this_a.is_file() and _archive_looks_xtensa(this_a):
+    if this_a.is_file() and _archive_looks_xtensa(this_a) and "esp32s3" not in str(env.BoardConfig().get("build.mcu", "")):
         print("micro-ROS: dropping Xtensa libmicroros.a (need RISC-V for C6)")
         shutil.rmtree(this_uros / "libmicroros", ignore_errors=True)
         shutil.rmtree(this_uros / "build", ignore_errors=True)

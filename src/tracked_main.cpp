@@ -122,6 +122,18 @@ rcl_publisher_t pack2_pub;
 rcl_publisher_t boost_pub;
 rcl_publisher_t range_pub;
 rcl_publisher_t als_pub;
+rcl_publisher_t ads_batt_pub;
+rcl_publisher_t ads_solar_pub;
+rcl_publisher_t ads_light_l_pub;
+rcl_publisher_t ads_light_r_pub;
+rcl_publisher_t side_l_pub;
+rcl_publisher_t side_r_pub;
+rcl_publisher_t servo_now_pub;  // solar/servo_now: angle after each received command
+volatile bool servo_now_dirty = false;
+std_msgs__msg__Float32 ads_msg;
+std_msgs__msg__Bool side_msg;
+rcl_subscription_t servo_sub;
+std_msgs__msg__Float32 servo_msg;
 rcl_subscription_t cmd_sub;
 sensor_msgs__msg__Imu imu_msg;
 std_msgs__msg__Bool ir_detected_msg;
@@ -153,6 +165,114 @@ void status_rgb(uint8_t r, uint8_t g, uint8_t b) {
   }
   digitalWrite(RGB_PWR_PIN, HIGH);
   rgbLedWrite(RGB_DATA_PIN, r, g, b);
+}
+
+// ---- ADS1115 (no library) ----
+uint8_t ads_addr = 0;
+float ads_v[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+uint8_t ads_ch = 0;
+uint32_t ads_started_ms = 0;
+bool ads_busy = false;
+
+bool ads_write16(uint8_t reg, uint16_t v) {
+  Wire.beginTransmission(ads_addr);
+  Wire.write(reg);
+  Wire.write(v >> 8);
+  Wire.write(v & 0xFF);
+  return Wire.endTransmission() == 0;
+}
+
+bool ads_read16(uint8_t reg, int16_t& out) {
+  Wire.beginTransmission(ads_addr);
+  Wire.write(reg);
+  if (Wire.endTransmission() != 0) return false;
+  if (Wire.requestFrom(ads_addr, static_cast<uint8_t>(2)) != 2) return false;
+  out = static_cast<int16_t>((Wire.read() << 8) | Wire.read());
+  return true;
+}
+
+void ads_begin() {
+  for (uint8_t a = 0x48; a <= 0x4B; ++a) {
+    Wire.beginTransmission(a);
+    if (Wire.endTransmission() == 0) {
+      ads_addr = a;
+      break;
+    }
+  }
+  if (ads_addr) {
+    Serial.printf("ADS1115 at 0x%02X (A0 batt, A1 solar, A2 light L, A3 light R)\n", ads_addr);
+  } else {
+    Serial.println("WARN: ADS1115 not found 0x48-0x4B");
+  }
+}
+
+// Single-shot, +-4.096 V, 128 SPS (~8 ms). One channel per call, non-blocking.
+void ads_tick(uint32_t now) {
+  if (!ads_addr) return;
+  if (!ads_busy) {
+    const uint16_t cfg = 0x8000 | ((0x4 + ads_ch) << 12) | (0x1 << 9) | 0x0100 | (0x4 << 5) | 0x0003;
+    if (ads_write16(0x01, cfg)) {
+      ads_busy = true;
+      ads_started_ms = now;
+    }
+    return;
+  }
+  if (now - ads_started_ms < 10) return;
+  int16_t raw = 0;
+  ads_v[ads_ch] = ads_read16(0x00, raw) ? raw * (4.096f / 32768.0f) : -1.0f;
+  ads_busy = false;
+  ads_ch = (ads_ch + 1) & 3;
+}
+
+// ---- Solar tilt servo ----
+bool servo_attached = false;
+float servo_deg_now = SOLAR_SERVO_CENTER_DEG;
+bool servo_ever_set = false;
+uint32_t servo_last_ms = 0;
+#ifndef SOLAR_SERVO_LEDC_CH
+#define SOLAR_SERVO_LEDC_CH 7  // dedicated; motors/IR/speaker use 0-5 via ledcAttach
+#endif
+#ifndef SOLAR_SERVO_HOLD_MS
+#define SOLAR_SERVO_HOLD_MS 600
+#endif
+
+// Stop 50 Hz PWM after the move so the servo goes limp (no idle holding current).
+void servo_release() {
+  if (!servo_attached) return;
+  ledcDetach(SOLAR_SERVO_PIN);
+  pinMode(SOLAR_SERVO_PIN, INPUT);
+  servo_attached = false;
+}
+
+void servo_tick() {
+  if (servo_attached && millis() - servo_last_ms > SOLAR_SERVO_HOLD_MS) servo_release();
+}
+
+void servo_set(float deg) {
+  if (!(deg == deg)) return;  // NaN
+  if (deg < SOLAR_SERVO_MIN_DEG) deg = SOLAR_SERVO_MIN_DEG;
+  if (deg > SOLAR_SERVO_MAX_DEG) deg = SOLAR_SERVO_MAX_DEG;
+  // Same angle as last time: don't re-energise.
+  if (servo_ever_set && fabsf(deg - servo_deg_now) < 0.5f) return;
+  if (!servo_attached) {
+    servo_attached = ledcAttachChannel(SOLAR_SERVO_PIN, 50, 14, SOLAR_SERVO_LEDC_CH);
+    if (!servo_attached) {
+      Serial.println("WARN: servo LEDC attach failed");
+      return;
+    }
+  }
+  servo_deg_now = deg;
+  servo_ever_set = true;
+  servo_last_ms = millis();
+  const uint32_t us = 500 + static_cast<uint32_t>(deg * 2000.0f / 180.0f);
+  ledcWrite(SOLAR_SERVO_PIN, us * 16384 / 20000);
+}
+
+void on_servo(const void* msgin) {
+  const float d = static_cast<const std_msgs__msg__Float32*>(msgin)->data;
+  Serial.printf("servo cmd %.1f\n", d);
+  servo_set(d);
+  servo_now_dirty = true;  // echo every receipt (even skipped duplicates)
 }
 
 void apply_drive() {
@@ -304,6 +424,25 @@ bool create_entities() {
     destroy_entities();
     return false;
   }
+  {
+    struct { rcl_publisher_t* p; const rosidl_message_type_support_t* t; const char* n; } extra[] = {
+      {&ads_batt_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "power/battery_v"},
+      {&ads_solar_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "power/solar_v"},
+      {&ads_light_l_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "light/left_v"},
+      {&ads_light_r_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "light/right_v"},
+      {&side_l_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "side/left"},
+      {&side_r_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "side/right"},
+      {&servo_now_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "solar/servo_now"},
+    };
+    for (auto& e : extra) {
+      rc = rclc_publisher_init_default(e.p, &node, e.t, e.n);
+      if (rc != RCL_RET_OK) {
+        ROS_LOG_FAIL(e.n, rc);
+        destroy_entities();
+        return false;
+      }
+    }
+  }
   ros_init_level = 3;
 
   rc = rclc_subscription_init_default(
@@ -313,9 +452,18 @@ bool create_entities() {
     destroy_entities();
     return false;
   }
+  rc = rclc_subscription_init_default(
+      &servo_sub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "solar/servo_deg");
+  if (rc != RCL_RET_OK) {
+    ROS_LOG_FAIL("sub solar/servo_deg", rc);
+    rcl_subscription_fini(&cmd_sub, &node);
+    ros_init_level = 3;
+    destroy_entities();
+    return false;
+  }
   ros_init_level = 4;
 
-  rc = rclc_executor_init(&executor, &support.context, 1, &allocator);
+  rc = rclc_executor_init(&executor, &support.context, 2, &allocator);
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("rclc_executor_init", rc);
     destroy_entities();
@@ -326,6 +474,12 @@ bool create_entities() {
   rc = rclc_executor_add_subscription(&executor, &cmd_sub, &cmd_msg, &on_cmd, ON_NEW_DATA);
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("executor add cmd_vel", rc);
+    destroy_entities();
+    return false;
+  }
+  rc = rclc_executor_add_subscription(&executor, &servo_sub, &servo_msg, &on_servo, ON_NEW_DATA);
+  if (rc != RCL_RET_OK) {
+    ROS_LOG_FAIL("executor add solar/servo_deg", rc);
     destroy_entities();
     return false;
   }
@@ -359,6 +513,7 @@ void destroy_entities() {
   }
   if (ros_init_level >= 4) {
     rcl_subscription_fini(&cmd_sub, &node);
+    rcl_subscription_fini(&servo_sub, &node);
   }
   if (ros_init_level >= 3) {
     rcl_publisher_fini(&stall_pub, &node);
@@ -370,6 +525,13 @@ void destroy_entities() {
     rcl_publisher_fini(&boost_pub, &node);
     rcl_publisher_fini(&range_pub, &node);
     rcl_publisher_fini(&als_pub, &node);
+    rcl_publisher_fini(&ads_batt_pub, &node);
+    rcl_publisher_fini(&ads_solar_pub, &node);
+    rcl_publisher_fini(&ads_light_l_pub, &node);
+    rcl_publisher_fini(&ads_light_r_pub, &node);
+    rcl_publisher_fini(&side_l_pub, &node);
+    rcl_publisher_fini(&side_r_pub, &node);
+    rcl_publisher_fini(&servo_now_pub, &node);
   }
   if (ros_init_level >= 2) {
     rcl_node_fini(&node);
@@ -489,6 +651,12 @@ void oled_draw(uint32_t now) {
 }  // namespace
 
 void setup() {
+  // Hold DRV8833 inputs LOW first: GPIO9 (left IN2) is the C6 boot strap with a pull-up,
+  // so the left track spins backwards until drive.begin() otherwise (after servo sweep).
+  for (int p : {MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2}) {
+    pinMode(p, OUTPUT);
+    digitalWrite(p, LOW);
+  }
   Serial.begin(115200);
   delay(300);
   Serial.println();
@@ -515,7 +683,17 @@ void setup() {
 #endif
 
   pinMode(VBUS_SENSE_PIN, INPUT);
-  pinMode(SOLAR_SERVO_PIN, INPUT);
+  // Solar tilt: boot sweep 45->125->90, then release PWM after SOLAR_SERVO_HOLD_MS (no idle current).
+  // Boot check: 45 -> 125 -> 90 smoothly (1 deg / 10 ms), then release.
+  servo_set(SOLAR_SERVO_MIN_DEG);
+  delay(400);
+  for (int d = SOLAR_SERVO_MIN_DEG + 1; d <= SOLAR_SERVO_MAX_DEG; ++d) { servo_set(d); delay(10); }
+  for (int d = SOLAR_SERVO_MAX_DEG - 1; d >= SOLAR_SERVO_CENTER_DEG; --d) { servo_set(d); delay(10); }
+  Serial.printf("Solar servo GPIO %d ch %d freq %lu Hz attached=%d\n", SOLAR_SERVO_PIN,
+                SOLAR_SERVO_LEDC_CH, (unsigned long)ledcReadFreq(SOLAR_SERVO_PIN), servo_attached);
+  delay(SOLAR_SERVO_HOLD_MS);
+  servo_release();  // all boards: no idle PWM hold
+  Serial.printf("Solar servo %d deg (limits %d-%d)\n", SOLAR_SERVO_CENTER_DEG, SOLAR_SERVO_MIN_DEG, SOLAR_SERVO_MAX_DEG);
   imu_ok = imu.begin(MPU6050_ADDR);
   if (!imu_ok) {
     Serial.println("WARN: MPU6050 not found on I2C 6/7");
@@ -523,6 +701,7 @@ void setup() {
     Serial.println("MPU6050 OK");
   }
   tof.begin();
+  ads_begin();
   if (!als.begin(BH1750_ADDR)) {
     Serial.println("WARN: BH1750 not found on I2C 6/7");
   } else {
@@ -598,6 +777,7 @@ void loop() {
   speaker.tick(now);
 #endif
 
+  servo_tick();
 #if defined(ENABLE_OTA)
   tracked_ota_tick();
   if (tracked_ota_busy()) {
@@ -640,6 +820,12 @@ void loop() {
   }
 
   rclc_executor_spin_some(&executor, RCL_MS_TO_NS(25));
+  if (servo_now_dirty) {
+    servo_now_dirty = false;
+    std_msgs__msg__Float32 sn;
+    sn.data = servo_deg_now;
+    rcl_publish(&servo_now_pub, &sn, nullptr);
+  }
 
   if (now - last_ping > 1000) {
     last_ping = now;
@@ -675,6 +861,7 @@ void loop() {
     }
   }
 
+  ads_tick(now);
   apply_drive();
   drive.tick();
   if (drive.moving()) {
@@ -689,7 +876,7 @@ void loop() {
     last_ir = now;
     const bool peer_seen = fleet_peer_rx.detected();
     const uint8_t peer_id = peer_seen ? fleet_peer_rx.peer_id() : FLEET_IR_PEER_NONE;
-    ir_detected_msg.data = fleet_rx_carrier() || side_ir_hit() || peer_seen;
+    ir_detected_msg.data = fleet_rx_carrier() || peer_seen;  // side IR now on side/left|right
     ir_peer_msg.data = peer_id;
 #if SPEAKER_ENABLED
     if (fleet_ir_ping.should_ping(peer_seen, peer_id, FLEET_IR_ID, now)) {
@@ -704,6 +891,16 @@ void loop() {
     rcl_publish(&battery_pub, &battery_msg, nullptr);
     pack2_msg.data = pack2_v;
     rcl_publish(&pack2_pub, &pack2_msg, nullptr);
+    if (ads_addr) {  // ADS absent: publish nothing (logged once at boot)
+      if (ads_v[0] > -0.5f) { ads_msg.data = ads_v[0] * ADS_BATT_DIVIDER; rcl_publish(&ads_batt_pub, &ads_msg, nullptr); }
+      if (ads_v[1] > -0.5f) { ads_msg.data = ads_v[1] * ADS_SOLAR_DIVIDER; rcl_publish(&ads_solar_pub, &ads_msg, nullptr); }
+      if (ads_v[2] > -0.5f) { ads_msg.data = ads_v[2]; rcl_publish(&ads_light_l_pub, &ads_msg, nullptr); }
+      if (ads_v[3] > -0.5f) { ads_msg.data = ads_v[3]; rcl_publish(&ads_light_r_pub, &ads_msg, nullptr); }
+    }
+    side_msg.data = digitalRead(IR_SIDE_L_PIN) == LOW;
+    rcl_publish(&side_l_pub, &side_msg, nullptr);
+    side_msg.data = digitalRead(IR_SIDE_R_PIN) == LOW;
+    rcl_publish(&side_r_pub, &side_msg, nullptr);
     boost_msg.data = boost_5v;
     rcl_publish(&boost_pub, &boost_msg, nullptr);
     if (tof.ok() && tof.range_m() > 0.0f) {
