@@ -664,9 +664,12 @@ void oled_draw(uint32_t now) {
   if (!oled_ok) {
     return;
   }
+  const bool wifi_up = WiFi.status() == WL_CONNECTED;
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
+
+  // Row 0: namespace + agent state (Wi-Fi state lives on row 1 only).
   display.setCursor(0, 0);
   display.print(F("/"));
   display.print(BOT_NAMESPACE);
@@ -675,31 +678,49 @@ void oled_draw(uint32_t now) {
   } else if (ros_ok) {
     display.print(F("  AUTO"));
   } else {
-    display.print(F("  WIFI"));
+    display.print(wifi_up ? F("  NO AGENT") : F("  OFFLINE"));
   }
   if (drive.moving()) {
     display.print(F(" *"));
   }
 
-  display.setCursor(0, 10);
-  display.print(WiFi.status() == WL_CONNECTED ? F("WiFi ") : F("WiFi-- "));
-  display.print(WiFi.localIP());
-
-  display.setCursor(0, 20);
-  display.print(boost_5v ? F("5V ") : F("bat "));
-  if (vbat_v > 0.5f) {
-    display.printf("E%.2f", vbat_v);
+  display.setCursor(0, 8);
+  if (wifi_up) {
+    display.print(F("WiFi "));
+    display.print(WiFi.localIP());
   } else {
-    display.print(F("E--"));
-  }
-  display.print(' ');
-  if (pack2_v > 0.5f) {
-    display.printf("M%.2f", pack2_v);
-  } else {
-    display.print(F("M--"));
+    display.print(F("WiFi --"));
   }
 
-  display.setCursor(0, 30);
+  // Main battery from ADS A2 (divider-corrected), fuel gauge only as its own labelled row.
+  display.setCursor(0, 16);
+  display.print(F("Batt "));
+  if (ads_addr && ads_v[ADS_CH_BATT] > -0.5f) {
+    display.printf("%.2fV", ads_v[ADS_CH_BATT] * ADS_BATT_DIVIDER);
+  } else {
+    display.print(F("-- (no ADS)"));
+  }
+
+  display.setCursor(0, 24);
+  display.print(F("Fuel "));
+  if (gauge_v > 0.0f) {
+    display.printf("%.2fV %d%%", gauge_v, static_cast<int>(gauge_soc + 0.5f));
+  } else {
+    display.print(F("--"));
+  }
+
+  display.setCursor(0, 32);
+  display.print(F("Solar "));
+  if (ads_addr && ads_v[ADS_CH_SOLAR] > -0.5f) {
+    display.printf("%.2fV", ads_v[ADS_CH_SOLAR] * ADS_SOLAR_DIVIDER);
+  } else {
+    display.print(F("-- (no ADS)"));
+  }
+  if (servo_ever_set) {
+    display.printf(" %ddeg", static_cast<int>(servo_deg_now + 0.5f));
+  }
+
+  display.setCursor(0, 40);
   if (tof.ok() && tof.range_m() > 0.0f) {
     display.printf("ToF %.2fm", tof.range_m());
   } else if (tof.present()) {
@@ -711,10 +732,10 @@ void oled_draw(uint32_t now) {
     display.printf(" %dlx", static_cast<int>(als.lux() + 0.5f));
   }
 
-  display.setCursor(0, 40);
+  display.setCursor(0, 48);
   display.printf("v %.2f  w %.2f", last_lin, last_ang);
 
-  display.setCursor(0, 50);
+  display.setCursor(0, 56);
   if (ps4_owns) {
     display.print(F("pad"));
   } else {
