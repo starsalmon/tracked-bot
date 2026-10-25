@@ -793,6 +793,43 @@ void setup() {
     Serial.printf("WARN: AGENT_IP parse failed: '%s'\n", AGENT_IP);
     agent_ip = IPAddress(192, 168, 2, 31);
   }
+  // Join Wi-Fi ourselves with progress logging (the library call blocks forever, silently).
+  {
+    WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+      Serial.printf("  WiFi STA disconnected, reason=%d\n", static_cast<int>(info.wifi_sta_disconnected.reason));
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+    WiFi.begin(WIFI_SSID, WIFI_PSK);
+    const uint32_t t0 = millis();
+    uint32_t last_log = 0, last_scan = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(250);
+      const uint32_t el = millis() - t0;
+      if (el - last_log >= 3000) {
+        last_log = el;
+        Serial.printf("WiFi joining '%s' status=%d t=%lus\n", WIFI_SSID, static_cast<int>(WiFi.status()),
+                      static_cast<unsigned long>(el / 1000));
+      }
+      if (el - last_scan >= 20000) {
+        last_scan = el;
+        WiFi.disconnect();
+        delay(300);
+        const int n = WiFi.scanNetworks();
+        bool seen = false;
+        for (int i = 0; i < n; i++) {
+          if (WiFi.SSID(i) == String(WIFI_SSID)) {
+            seen = true;
+            Serial.printf("  scan: '%s' ch %d rssi %d\n", WIFI_SSID, WiFi.channel(i), WiFi.RSSI(i));
+          }
+        }
+        Serial.printf("  scan: %d networks, SSID %s\n", n, seen ? "VISIBLE" : "NOT visible");
+        WiFi.scanDelete();
+        WiFi.disconnect();
+        delay(200);
+        WiFi.begin(WIFI_SSID, WIFI_PSK);
+      }
+    }
+    Serial.printf("WiFi joined: IP %s RSSI %d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  }
   set_microros_wifi_transports(WIFI_SSID, WIFI_PSK, agent_ip, AGENT_PORT);
 #if defined(ENABLE_OTA)
   WiFi.setSleep(WIFI_PS_NONE);
