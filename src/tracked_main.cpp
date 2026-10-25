@@ -234,24 +234,54 @@ bool ads_read16(uint8_t reg, int16_t& out) {
   return true;
 }
 
-void ads_begin() {
-  for (uint8_t a = 0x48; a <= 0x4B; ++a) {
+// Scan the whole I2C bus (SDA/SCL pins from tracked_pins) and log what answers. Logged on change.
+uint8_t i2c_scan_log(bool force) {
+  static uint32_t last_mask_lo = 0xFFFFFFFF, last_mask_hi = 0xFFFFFFFF, last_mask_hh = 0xFFFFFFFF, last_mask_h4 = 0xFFFFFFFF;
+  uint32_t m[4] = {0, 0, 0, 0};
+  char buf[160];
+  size_t n = 0;
+  uint8_t ads = 0;
+  uint8_t count = 0;
+  for (uint8_t a = 0x08; a < 0x78; ++a) {
     Wire.beginTransmission(a);
     if (Wire.endTransmission() == 0) {
-      ads_addr = a;
-      break;
+      m[a >> 5] |= 1u << (a & 31);
+      ++count;
+      if (n + 6 < sizeof(buf)) n += snprintf(buf + n, sizeof(buf) - n, " 0x%02X", a);
+      if (!ads && a >= 0x48 && a <= 0x4B) ads = a;
     }
   }
+  buf[n] = 0;
+  if (force || m[0] != last_mask_lo || m[1] != last_mask_hi || m[2] != last_mask_hh || m[3] != last_mask_h4) {
+    last_mask_lo = m[0]; last_mask_hi = m[1]; last_mask_hh = m[2]; last_mask_h4 = m[3];
+    Serial.printf("I2C scan (SDA %d SCL %d): %u device(s):%s\n", I2C_SDA_PIN, I2C_SCL_PIN, count, count ? buf : " none");
+  }
+  return ads;
+}
+
+void ads_begin() {
+  ads_addr = i2c_scan_log(true);
   if (ads_addr) {
     Serial.printf("ADS1115 at 0x%02X (A0 light L, A1 light R, A2 batt, A3 solar)\n", ads_addr);
   } else {
-    Serial.println("WARN: ADS1115 not found 0x48-0x4B");
+    Serial.println("WARN: ADS1115 not found 0x48-0x4B (will re-probe every 5 s)");
   }
 }
 
 // Single-shot, +-4.096 V, 128 SPS (~8 ms). One channel per call, non-blocking.
 void ads_tick(uint32_t now) {
-  if (!ads_addr) return;
+  if (!ads_addr) {
+    static uint32_t last_probe = 0;
+    if (now - last_probe < 5000) return;
+    last_probe = now;
+    ads_addr = i2c_scan_log(false);  // logs the bus again only if the device set changed
+    if (ads_addr) {
+      Serial.printf("ADS1115 found late at 0x%02X (A0 light L, A1 light R, A2 batt, A3 solar)\n", ads_addr);
+      ads_busy = false;
+      ads_ch = 0;
+    }
+    return;
+  }
   if (!ads_busy) {
     const uint16_t cfg = 0x8000 | ((0x4 + ads_ch) << 12) | (0x1 << 9) | 0x0100 | (0x4 << 5) | 0x0003;
     if (ads_write16(0x01, cfg)) {
@@ -621,6 +651,10 @@ bool connect_ros() {
     drive.stop();
   }
   drive_arm_at_ms = millis();
+#if SPEAKER_ENABLED
+  Serial.println("speaker: play fleet-ping chirp (agent connected)");
+  speaker.play(TrackedSpeaker::kMelodyFleetPing);
+#endif
   Serial.printf("micro-ROS ready ns=/%s — drive locked %u ms\n", BOT_NAMESPACE, DRIVE_ARM_MS);
   return true;
 }
@@ -767,6 +801,8 @@ void setup() {
       speaker.tick(millis());
       delay(1);
     }
+    ledcChangeFrequency(IR_TX_PIN, IR_TX_HZ, 8);  // boot tune retuned the shared LEDC timer
+    Serial.println("speaker: boot melody played");
   } else {
     Serial.printf("WARN: speaker PWM failed GPIO %d ch %d\n", SPEAKER_PIN, SPEAKER_LEDC_CH);
   }
@@ -873,6 +909,13 @@ void loop() {
 
 #if SPEAKER_ENABLED
   speaker.tick(now);
+  {
+    // Speaker LEDC channel shares a timer with IR TX (ledcWriteTone retunes it): restore the 38 kHz carrier when a tune ends.
+    static bool was_busy = false;
+    const bool busy = speaker.busy();
+    if (was_busy && !busy) ledcChangeFrequency(IR_TX_PIN, IR_TX_HZ, 8);
+    was_busy = busy;
+  }
 #endif
 
   servo_tick();
