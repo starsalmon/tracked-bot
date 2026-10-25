@@ -14,8 +14,13 @@
 #define I2C_SCL_PIN 7  // TinyC6 SCL
 #endif
 
-// ADS1115 on this I2C bus: A0 = main battery, A1 = solar panel, A2 = left BPW34, A3 = right BPW34.
-// Address auto-probed 0x48..0x4B at boot. A0 1S LiPo 100k/100k (x2.0), A1 6 V panel 100k top/47k bottom (x3.128); BPW34s 4.7k load, raw pin V.
+// ADS1115 on this I2C bus: A0 = left BPW34, A1 = right BPW34, A2 = main battery, A3 = solar panel.
+// Address auto-probed 0x48..0x4B at boot. BPW34s: 4.7k to ground, raw pin V. A2 1S LiPo 100k/100k (x2.0);
+// A3 6 V panel: 100k from panel+ to the ADS pin, 47k from the pin to ground (x3.128).
+#define ADS_CH_LIGHT_L 0
+#define ADS_CH_LIGHT_R 1
+#define ADS_CH_BATT    2
+#define ADS_CH_SOLAR   3
 #ifndef ADS_BATT_DIVIDER
 #define ADS_BATT_DIVIDER 2.0f
 #endif

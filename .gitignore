@@ -11,3 +11,11 @@ __pycache__/
 *.pyc
 *.crapp.cpp
 *.ino.orig
+
+*.bak*
+.vscode/
+platformio_private.ini*
+.pio/
+build/
+*.bin
+*.elf
