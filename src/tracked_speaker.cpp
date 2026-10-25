@@ -5,7 +5,7 @@ namespace {
 constexpr uint8_t kDutyBits = 8;
 constexpr uint8_t kDutyOn = (1u << kDutyBits) / 3;
 constexpr uint16_t kNoteGapMs = 5;
-constexpr float kVol = 0.45f;
+constexpr float kVol = 1.5f;  // duty = 256/3*1.5 = 50 % (loudest square wave for a passive piezo)
 
 struct Note {
   uint16_t hz;

@@ -9,6 +9,7 @@ class TrackedSpeaker {
   bool begin(int pin, int8_t ledc_channel = 5);
   void tick(uint32_t now_ms);
   void play(uint8_t melody_id);
+  bool busy() const { return _melody != nullptr; }
 
   static constexpr uint8_t kMelodyStartup = 1;
   static constexpr uint8_t kMelodyFleetPing = 2;
