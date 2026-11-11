@@ -132,8 +132,10 @@ rcl_publisher_t ads_light_r_pub;
 rcl_publisher_t side_l_pub;
 rcl_publisher_t side_r_pub;
 rcl_publisher_t servo_now_pub;  // solar/servo_now: angle after each received command
+rcl_publisher_t wifi_pub;       // wifi/rssi every 30 s; 18th publisher, at the cap
 volatile bool servo_now_dirty = false;
 std_msgs__msg__Float32 ads_msg;
+std_msgs__msg__Float32 wifi_msg;
 std_msgs__msg__Bool side_msg;
 rcl_subscription_t servo_sub;
 std_msgs__msg__Float32 servo_msg;
@@ -507,6 +509,7 @@ bool create_entities() {
       {&side_l_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "side/left"},
       {&side_r_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "side/right"},
       {&servo_now_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "solar/servo_now"},
+      {&wifi_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "wifi/rssi"},
     };
     for (auto& e : extra) {
       rc = rclc_publisher_init_default(e.p, &node, e.t, e.n);
@@ -607,6 +610,7 @@ void destroy_entities() {
     rcl_publisher_fini(&side_l_pub, &node);
     rcl_publisher_fini(&side_r_pub, &node);
     rcl_publisher_fini(&servo_now_pub, &node);
+    rcl_publisher_fini(&wifi_pub, &node);
   }
   if (ros_init_level >= 2) {
     rcl_node_fini(&node);
@@ -922,6 +926,7 @@ void loop() {
   static uint32_t last_ping = 0;
   static uint32_t last_oled = 0;
   static uint32_t last_ir = 0;
+  static uint32_t last_wifi = 0;
   static uint32_t last_tof = 0;
   static uint32_t last_vbat = 0;
   static uint32_t last_imu = 0;
@@ -1076,6 +1081,14 @@ void loop() {
       als_msg.header.stamp.sec = static_cast<int32_t>(now / 1000);
       als_msg.header.stamp.nanosec = static_cast<uint32_t>((now % 1000) * 1000000UL);
       rcl_publish(&als_pub, &als_msg, nullptr);
+    }
+  }
+
+  if (now - last_wifi >= 30000) {
+    last_wifi = now;
+    if (WiFi.status() == WL_CONNECTED) {
+      wifi_msg.data = static_cast<float>(WiFi.RSSI());
+      rcl_publish(&wifi_pub, &wifi_msg, nullptr);
     }
   }
 
