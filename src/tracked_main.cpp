@@ -30,11 +30,6 @@
 #include "tracked_speaker.h"
 #include "tracked_tof.h"
 
-#if defined(TRACKED_PS4)
-#include <PS4Controller.h>
-#include "DifferentialSteering.h"
-#include "tracked_stick.h"
-#endif
 #ifndef BOT_NAMESPACE
 #define BOT_NAMESPACE "bot2"
 #endif
@@ -100,10 +95,6 @@ TrackedTof tof;
 Mpu6050Imu imu;
 bool imu_ok = false;
 TrackedAls als;
-#if defined(TRACKED_PS4)
-DifferentialSteering diff_steer;
-#endif
-bool ps4_owns = false;
 
 float last_lin = 0.0f;
 float last_ang = 0.0f;
@@ -351,9 +342,6 @@ void on_servo(const void* msgin) {
 }
 
 void apply_drive() {
-  if (ps4_owns) {
-    return;
-  }
   if (drive_arm_at_ms == 0 || (millis() - drive_arm_at_ms) < DRIVE_ARM_MS) {
     drive.stop();
     return;
@@ -378,36 +366,7 @@ float read_pack2() {
 }
 
 bool read_boost_5v() {
-  // GPIO10 is VBUS sense, not an ADC pin on C6 — analogRead here panics.
   return digitalRead(VBUS_SENSE_PIN) == HIGH;
-}
-
-bool tick_ps4() {
-#if !defined(TRACKED_PS4)
-  ps4_owns = false;
-  return false;
-#else
-  if (!PS4.isConnected()) {
-    if (ps4_owns) {
-      drive.set_twist(0.0f, 0.0f);
-    }
-    ps4_owns = false;
-    return false;
-  }
-  ps4_owns = true;
-  int y = 0;
-  if (PS4.R2()) {
-    y = map(PS4.R2Value(), 0, 255, 0, 127);
-  }
-  if (PS4.L2()) {
-    y = map(PS4.L2Value(), 0, 255, 0, -127);
-  }
-  int left = 0;
-  int right = 0;
-  tracked_stick_to_motors(diff_steer, PS4.LStickX(), y, left, right);
-  drive.set_wheel_speeds(left / 127.0f, right / 127.0f);
-  return true;
-#endif
 }
 
 void on_cmd(const void* msgin) {
@@ -633,7 +592,6 @@ bool wait_for_agent(uint32_t timeout_ms) {
       return true;
     }
     Serial.println("waiting for agent...");
-    tick_ps4();
     drive.tick();
     delay(LOOP_MS);
   }
@@ -651,9 +609,7 @@ bool connect_ros() {
     delay(2000);
     return false;
   }
-  if (!ps4_owns) {
-    drive.stop();
-  }
+  drive.stop();
   drive_arm_at_ms = millis();
 #if SPEAKER_ENABLED
   Serial.println("speaker: play fleet-ping chirp (agent connected)");
@@ -677,9 +633,7 @@ void oled_draw(uint32_t now) {
   display.setCursor(0, 0);
   display.print(F("/"));
   display.print(BOT_NAMESPACE);
-  if (ps4_owns) {
-    display.print(F("  PS4"));
-  } else if (ros_ok) {
+  if (ros_ok) {
     display.print(F("  AUTO"));
   } else {
     display.print(wifi_up ? F("  NO AGENT") : F("  OFFLINE"));
@@ -740,12 +694,8 @@ void oled_draw(uint32_t now) {
   display.printf("v %.2f  w %.2f", last_lin, last_ang);
 
   display.setCursor(0, 56);
-  if (ps4_owns) {
-    display.print(F("pad"));
-  } else {
-    const bool cmd = (now - last_cmd_ms) <= CMD_TIMEOUT_MS;
-    display.print(cmd ? F("cmd") : F("idle"));
-  }
+  const bool cmd = (now - last_cmd_ms) <= CMD_TIMEOUT_MS;
+  display.print(cmd ? F("cmd") : F("idle"));
   display.print(F("  "));
   display.print(BOT_OTA_HOSTNAME);
   display.display();
@@ -755,8 +705,7 @@ void oled_draw(uint32_t now) {
 }  // namespace
 
 void setup() {
-  // Hold DRV8833 inputs LOW first: GPIO9 (left IN2) is the C6 boot strap with a pull-up,
-  // so the left track spins backwards until drive.begin() otherwise (after servo sweep).
+  // Hold DRV8833 inputs LOW before PWM init (IO0 BOOT strap has a pull-up).
   for (int p : {MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2}) {
     pinMode(p, OUTPUT);
     digitalWrite(p, LOW);
@@ -764,7 +713,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println();
-  Serial.println("*** FIRMWARE: tracked_wifi TinyC6 (ROS /cmd_vel + OTA) ***");
+  Serial.println("*** FIRMWARE: tracked TinyS3[D] (ROS /cmd_vel + OTA) ***");
 
   pinMode(RGB_PWR_PIN, OUTPUT);
   digitalWrite(RGB_PWR_PIN, HIGH);
@@ -800,7 +749,7 @@ void setup() {
   Serial.printf("Solar servo %d deg (limits %d-%d)\n", SOLAR_SERVO_CENTER_DEG, SOLAR_SERVO_MIN_DEG, SOLAR_SERVO_MAX_DEG);
   imu_ok = imu.begin(MPU6050_ADDR);
   if (!imu_ok) {
-    Serial.println("WARN: MPU6050 not found on I2C 6/7");
+    Serial.println("WARN: MPU6050 not found on I2C (SDA 8 / SCL 9)");
   } else {
     Serial.println("MPU6050 OK");
   }
@@ -808,7 +757,7 @@ void setup() {
   ads_begin();
   gauge_begin();
   if (!als.begin(BH1750_ADDR)) {
-    Serial.println("WARN: BH1750 not found on I2C 6/7");
+    Serial.println("WARN: BH1750 not found on I2C (SDA 8 / SCL 9)");
   } else {
     Serial.printf("BH1750 OK  %.0f lx\n", static_cast<double>(als.lux()));
   }
@@ -816,7 +765,7 @@ void setup() {
   if (!drive.begin()) {
     Serial.println("WARN: DRV8833 PWM init failed");
   }
-  ir_pins_begin();  // after motor LEDC — C6 has only 6 PWM channels
+  ir_pins_begin();  // after motor LEDC — shared timer with speaker
 #if SPEAKER_ENABLED
   if (speaker.begin(SPEAKER_PIN, SPEAKER_LEDC_CH)) {
     speaker.play(TrackedSpeaker::kMelodyStartup);
@@ -830,18 +779,6 @@ void setup() {
     Serial.println("speaker: boot melody played");
   } else {
     Serial.printf("WARN: speaker PWM failed GPIO %d ch %d\n", SPEAKER_PIN, SPEAKER_LEDC_CH);
-  }
-#endif
-#if defined(TRACKED_PS4)
-#ifndef TRACKED_PS4_MAC
-#define TRACKED_PS4_MAC "AC:3E:B1:0A:5B:3C"
-#endif
-  diff_steer.begin(32);
-
-  // Classic BT must be up *before* WiFi (legacy NodeMCU-32S only).
-  Serial.printf("PS4.begin %s (BT before WiFi)\n", TRACKED_PS4_MAC);
-  if (!PS4.begin(TRACKED_PS4_MAC)) {
-    Serial.println("PS4.begin failed — pad will not connect");
   }
 #endif
 
@@ -955,8 +892,6 @@ void loop() {
   }
 #endif
 
-  tick_ps4();
-
   if (now - last_tof >= 50) {
     last_tof = now;
     tof.poll();
@@ -978,9 +913,7 @@ void loop() {
 
   if (!ros_ok) {
     connect_ros();
-    if (!ps4_owns) {
-      drive.stop();
-    }
+    drive.stop();
     drive.tick();
     oled_draw(now);
     delay(LOOP_MS);
@@ -1003,9 +936,7 @@ void loop() {
         Serial.println("agent lost");
         agent_miss = 0;
         destroy_entities();
-        if (!ps4_owns) {
-          drive.stop();
-        }
+        drive.stop();
         return;
       }
     } else {

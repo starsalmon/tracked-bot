@@ -166,5 +166,5 @@ for lab, col in [("Drive", C_MOT), ("Sensors/actuators", C_SEN), ("IR comms", C_
     c.setFillColor(colors.black); c.drawString(lx0 + 11, ly + 1.5, lab)
     lx0 += 11 + c.stringWidth(lab, "Helvetica", 7) + 8
 c.setFont("Helvetica", 6.5); c.setFillColor(HexColor("#666666"))
-c.drawString(rx0, ly + 12, "Source: include/tracked_pins_s3.h, include/tracked_pins.h, src/tracked_main.cpp")
+c.drawString(rx0, ly + 12, "Source: include/tracked_pins.h, docs/PINMAP.md, src/tracked_main.cpp")
 c.showPage(); c.save()

@@ -14,22 +14,28 @@ def _archive_looks_xtensa(archive):
         return False
 
 
+def _microros_sibling_env(pioenv):
+    """USB-first-flash env shares the prebuilt micro-ROS tree from the matching OTA env."""
+    if pioenv.endswith("_usb"):
+        base = pioenv[: -len("_usb")]
+        if base.endswith("_ota"):
+            return base
+        return base + "_ota"
+    return None
+
+
 def _reuse_or_drop_stale_microros():
-    """USB env has its own libdeps folder. A leftover Xtensa libmicroros.a
-    links as 'skipping incompatible' on C6. Reuse the OTA RISC-V build."""
+    """USB env has its own libdeps folder. Reuse the OTA Xtensa build when possible."""
     project = Path(env["PROJECT_DIR"])
     pioenv = env["PIOENV"]
     libdeps = project / ".pio" / "libdeps"
     this_uros = libdeps / pioenv / "micro_ros_platformio"
     this_a = this_uros / "libmicroros" / "libmicroros.a"
 
-    sibling = None
-    if pioenv.endswith("_usb"):
-        sibling = libdeps / pioenv[: -len("_usb")] / "micro_ros_platformio"
+    sibling_name = _microros_sibling_env(pioenv)
+    sibling = libdeps / sibling_name / "micro_ros_platformio" if sibling_name else None
 
-    if sibling and (sibling / "libmicroros" / "libmicroros.a").is_file() and not _archive_looks_xtensa(
-        sibling / "libmicroros" / "libmicroros.a"
-    ):
+    if sibling and (sibling / "libmicroros" / "libmicroros.a").is_file():
         if this_uros.is_symlink() or this_uros.exists():
             if this_uros.is_symlink() and this_uros.resolve() == sibling.resolve():
                 print("micro-ROS: USB env reusing", sibling.parent.name)
@@ -44,8 +50,9 @@ def _reuse_or_drop_stale_microros():
         print("micro-ROS: linked", pioenv, "→", sibling.parent.name)
         return
 
-    if this_a.is_file() and _archive_looks_xtensa(this_a) and "esp32s3" not in str(env.BoardConfig().get("build.mcu", "")):
-        print("micro-ROS: dropping Xtensa libmicroros.a (need RISC-V for C6)")
+    mcu = str(env.BoardConfig().get("build.mcu", ""))
+    if this_a.is_file() and _archive_looks_xtensa(this_a) and "esp32s3" not in mcu:
+        print("micro-ROS: dropping stale Xtensa libmicroros.a (MCU is", mcu, ")")
         shutil.rmtree(this_uros / "libmicroros", ignore_errors=True)
         shutil.rmtree(this_uros / "build", ignore_errors=True)
 

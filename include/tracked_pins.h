@@ -1,171 +1,74 @@
 #pragma once
-#ifdef TRACKED_PINS_S3
-#include "tracked_pins_s3.h"
-#endif
+// Unexpected Maker TinyS3[D] (ESP32-S3) — DRV8833 tracks.
+// Source of truth for docs/PINMAP.md and WIRING.md.
 
-// Unexpected Maker TinyC6 (ESP32-C6) — DRV8833 tracks.
-// Source of truth: WIRING.md.
-// GPIO 0 = solar servo signal, GPIO 1 = fleet IR RX (32 kHz crystal pins — now assigned).
+// --- Header GPIO (silk labels IO#) ---
+#define SOLAR_SERVO_PIN 4   // IO4 — solar panel tilt servo
+#define IR_RX_PIN       3   // IO3 — fleet IR demod (TSOP), JTAG strap, input only
+#define IR_SIDE_R_PIN   5   // IO5 — side proximity, active LOW
+#define MOTOR_A_IN1     21  // IO21 — DRV8833 AIN1, left track
+#define MOTOR_A_IN2     0   // IO0 — DRV8833 AIN2, left track (BOOT strap)
+#define MOTOR_B_IN1     44  // RX / IO44 — DRV8833 BIN1, right track (UART0 RX)
+#define MOTOR_B_IN2     43  // TX / IO43 — DRV8833 BIN2, right track (UART0 TX)
+#define IR_SIDE_L_PIN   6   // IO6 — side proximity, active LOW
+#define SPEAKER_PIN     7   // IO7 / D7 — passive piezo
+#define I2C_SDA_PIN     8   // SDA / IO8 — I2C bus
+#define I2C_SCL_PIN     9   // SCL / IO9 — I2C bus
+#define IR_TX_PIN       34  // IO34 — fleet IR LED, 38 kHz
 
-#ifndef I2C_SDA_PIN
-#define I2C_SDA_PIN 6  // TinyC6 SDA — OLED + MPU + BH1750 + ToF (+ future ADS1115)
-#endif
-#ifndef I2C_SCL_PIN
-#define I2C_SCL_PIN 7  // TinyC6 SCL
-#endif
+// --- On-board (not broken out on header) ---
+#define RGB_PWR_PIN     17  // NEOPIXEL_POWER
+#define RGB_DATA_PIN    18  // NEOPIXEL
+#define VBUS_SENSE_PIN  33  // VBUS — digital HIGH when USB 5 V present (not ADC)
 
-// ADS1115 on this I2C bus: A0 = left BPW34, A1 = right BPW34, A2 = main battery, A3 = solar panel.
+// ADS1115 on I2C: A0 = left BPW34, A1 = right BPW34, A2 = main battery, A3 = solar panel.
 // Address auto-probed 0x48..0x4B at boot. BPW34s: 4.7k to ground, raw pin V. A2 1S LiPo 100k/100k (x2.0);
 // A3 6 V panel: 100k from panel+ to the ADS pin, 47k from the pin to ground (x3.128).
 #define ADS_CH_LIGHT_L 0
 #define ADS_CH_LIGHT_R 1
 #define ADS_CH_BATT    2
 #define ADS_CH_SOLAR   3
-#ifndef ADS_BATT_DIVIDER
 #define ADS_BATT_DIVIDER 2.0f
-#endif
-#ifndef ADS_SOLAR_DIVIDER
 #define ADS_SOLAR_DIVIDER 3.128f
-#endif
 
-#ifndef MPU6050_ADDR
 #define MPU6050_ADDR 0x68
-#endif
-#ifndef IMU_GYRO_Z_SIGN
 #define IMU_GYRO_Z_SIGN (1.0f)
-#endif
 
-// Bot-to-bot IR ID. TinyC6 has no GPIO14 on the header (not bonded out).
-#ifndef IR_TX_PIN
-#define IR_TX_PIN 18
-#endif
-#ifndef IR_RX_PIN
-#define IR_RX_PIN 1  // TSOP / demod (LOW = carrier seen)
-#endif
-#ifndef IR_TX_HZ
 #define IR_TX_HZ 38000
-#endif
-#ifndef IR_TX_MODULATE
 #define IR_TX_MODULATE 1
-#endif
-#ifndef IR_TX_DEFAULT_ON
 #define IR_TX_DEFAULT_ON 1
-#endif
 #ifndef FLEET_IR_ID
 #define FLEET_IR_ID 2
 #endif
 
-// Side IR proximity (digital, active LOW). Pull-ups on; unused = HIGH.
-#ifndef IR_SIDE_L_PIN
-#define IR_SIDE_L_PIN 15
-#endif
-#ifndef IR_SIDE_R_PIN
-#define IR_SIDE_R_PIN 11
-#endif
-
-#ifndef MOTOR_A_IN1
-#define MOTOR_A_IN1 8  // left (was right pins; C6 strap — PWM idle LOW at boot)
-#endif
-#ifndef MOTOR_A_IN2
-#define MOTOR_A_IN2 9
-#endif
-#ifndef MOTOR_B_IN1
-#define MOTOR_B_IN1 17  // right (was left pins)
-#endif
-#ifndef MOTOR_B_IN2
-#define MOTOR_B_IN2 16
-#endif
 // DRV8833 nSLEEP — tie HIGH to 3.3 V in hardware; firmware does not drive a GPIO for it.
 
-#ifndef TRACK_PWM_HZ
 #define TRACK_PWM_HZ 30000
-#endif
-#ifndef TRACK_PWM_BITS
 #define TRACK_PWM_BITS 8
-#endif
-
-// Bench dead-band: map |cmd|>0 onto 150–255 duty (do not drop this floor).
-#ifndef TRACK_PWM_MIN
 #define TRACK_PWM_MIN 150
-#endif
-#ifndef TRACK_PWM_MAX
 #define TRACK_PWM_MAX 255
-#endif
-
-#ifndef TRACK_INVERT_LEFT
 #define TRACK_INVERT_LEFT 0
-#endif
-#ifndef TRACK_INVERT_RIGHT
 #define TRACK_INVERT_RIGHT 1
-#endif
-
-#ifndef TRACK_ACCEL_PER_S
 #define TRACK_ACCEL_PER_S 0.50f
-#endif
-#ifndef TRACK_BRAKE_PER_S
 #define TRACK_BRAKE_PER_S 0.85f
-#endif
-
-#ifndef CMD_TIMEOUT_MS
 #define CMD_TIMEOUT_MS 400
-#endif
-#ifndef DRIVE_ARM_MS
 #define DRIVE_ARM_MS 1500
-#endif
 
-#ifndef OLED_ENABLED
 #define OLED_ENABLED 1
-#endif
-#ifndef OLED_WIDTH
 #define OLED_WIDTH 128
-#endif
-#ifndef OLED_HEIGHT
 #define OLED_HEIGHT 64
-#endif
-#ifndef OLED_ADDR
 #define OLED_ADDR 0x3C
-#endif
 
-// Onboard NeoPixel (GPIO23 data, GPIO22 power).
-#ifndef RGB_PWR_PIN
-#define RGB_PWR_PIN 22
-#endif
-#ifndef RGB_DATA_PIN
-#define RGB_DATA_PIN 23
-#endif
-
-#ifndef VBUS_SENSE_PIN
-#define VBUS_SENSE_PIN 10  // TinyC6 VBUS — digital HIGH when 5 V (USB or boost) is in. Not ADC.
-#endif
-
-// Solar panel tilt — 3.3 V rail so it still works when the 500 mAh / boost 5 V is dead.
-// Small slow servo only; stall current can brown out the C6.
-#ifndef SOLAR_SERVO_PIN
-#define SOLAR_SERVO_PIN 0
-#endif
-// 45 = panel 45 deg left, 90 = flat (boot), 125 = 45 deg right. Every command is clamped.
+// Solar panel tilt — 3.3 V rail so it still works when the motor boost is off.
+// Small slow servo only; stall current can brown out the board.
 #define SOLAR_SERVO_MIN_DEG 45
 #define SOLAR_SERVO_MAX_DEG 125
 #define SOLAR_SERVO_CENTER_DEG 90
 
 // Passive piezo — SPEAKER_LEDC_CH is an LEDC slot, not a GPIO.
-#ifndef SPEAKER_PIN
-#define SPEAKER_PIN 5
-#endif
-#ifndef SPEAKER_LEDC_CH
 #define SPEAKER_LEDC_CH 5
-#endif
-#ifndef SPEAKER_ENABLED
 #define SPEAKER_ENABLED 1
-#endif
 
-#ifndef BH1750_ADDR
-#define BH1750_ADDR 0x23  // ADDR pin to GND; 0x5C if ADDR to 3.3 V
-#endif
-
-#ifndef TOF_I2C_ADDR
+#define BH1750_ADDR 0x23
 #define TOF_I2C_ADDR 0x29
-#endif
-#ifndef TOF_STOP_M
 #define TOF_STOP_M 0.12f
-#endif
