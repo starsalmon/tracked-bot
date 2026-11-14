@@ -25,13 +25,15 @@ if os.path.isfile(stamp_path):
         prev = f.read().strip()
 
 if prev != digest:
-    build_dir = os.path.join(
-        env["PROJECT_DIR"], ".pio", "libdeps", env["PIOENV"], "micro_ros_platformio", "build"
+    import shutil
+    mr_dir = os.path.join(
+        env["PROJECT_DIR"], ".pio", "libdeps", env["PIOENV"], "micro_ros_platformio"
     )
-    if os.path.isdir(build_dir):
-        print("micro-ROS meta changed — wiping", build_dir)
-        import shutil
-
-        shutil.rmtree(build_dir)
+    # libmicroros (the prebuilt .a + headers) must go too, otherwise the old library is reused
+    for sub in ("build", "libmicroros"):
+        d = os.path.join(mr_dir, sub)
+        if os.path.isdir(d):
+            print("micro-ROS meta changed — wiping", d)
+            shutil.rmtree(d)
     with open(stamp_path, "w", encoding="utf-8") as f:
         f.write(digest)

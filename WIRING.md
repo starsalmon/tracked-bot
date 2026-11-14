@@ -1,136 +1,126 @@
-# Tracked bot wiring
+# Tracked bot wiring (Tracker, bot2)
 
-Board: **Unexpected Maker TinyC6** (ESP32-C6). **Source of truth:** `include/tracked_pins.h`.
+Board: **Unexpected Maker TinyS3[D]** (ESP32-S3). **Source of truth:** `include/tracked_pins.h` and `docs/PINMAP.md`.
 
-LiPo **400 mAh** on the TinyC6 **JST-PH** (onboard charger). **500 mAh** is a separate charge/boost pack for 5 V motors. Do **not** use GPIO 0/1 (32 kHz crystal).
-
-The old **NodeMCU-32S** sketch is still `nodemcu-32s` (PS4 / Classic BT only). Fleet firmware is TinyC6 — C6 has **BLE only**, so no PS4 pad.
-
-MPU-6050 is on the same I2C as the OLED. ToF can stay unplugged (`ToF --` until it ACKs).
+Power: one **1S 800 mAh LiPo** into a boost converter; the 5 V output feeds the TinyS3 **5 V** pin and the DRV8833 **VM**. Tracks are two **130-size** DC motors on a **DRV8833**.
 
 ---
 
-## Quick pin map
+## Quick pin map (silk labels)
 
-| GPIO | Function | Notes |
-|------|----------|--------|
-| **2** | DRV8833 AIN1 | Left track |
-| **3** | DRV8833 AIN2 | Left |
-| **20** | DRV8833 BIN1 | Right track |
-| **21** | DRV8833 BIN2 | Right |
-| **16** | DRV8833 **nSLEEP** | HIGH = run; firmware pulls LOW when stopped |
-| **6** | I2C SDA | OLED + **MPU-6050** + ToF |
-| **7** | I2C SCL | Same bus |
-| **8** | **IR TX** | 38 kHz fleet ID beacon (C6 strap pin — idle LOW at boot) |
-| **16** | DRV8833 **nSLEEP** | Also board silk **TX** — motors, not IR |
-| **17** | **IR RX** | TSOP / demod; board silk **RX** |
-| **18** | **Side IR L** (reserved) | Digital proximity, active LOW, pull-up |
-| **19** | **Side IR R** (reserved) | Same |
-| **4** | VBAT sense | **400 mAh** onboard divider — do not reuse |
-| **5** | **500 mAh** pack divider | Last C6 ADC. Mid-point ≤ **3.3 V**. ≥47 k resistors. |
-| **10** | VBUS / boost 5 V sense | USB **or** boost 5 V into the TinyC6 5 V pin |
-| **11** | **Solar tilt servo** (reserved) | Signal only. Power from TinyC6 **3.3 V**. |
-| **22** | RGB power | Onboard — firmware drives this |
-| **23** | RGB data | Onboard NeoPixel — do not reuse |
+| Silk | GPIO | Function | Notes |
+|------|------|----------|-------|
+| **IO4** | 4 | **Solar tilt servo** | Signal, LEDC |
+| **IO3** | 3 | **IR RX** | TSOP / 38 kHz demod (fleet peer ID); strap pin, input only |
+| **IO5** | 5 | **Side IR R** | Digital, active LOW, pull-up |
+| **IO21** | 21 | DRV8833 **AIN1** | Left track |
+| **IO0** | 0 | DRV8833 **AIN2** | Left track; **BOOT** strap |
+| **RX / IO44** | 44 | DRV8833 **BIN1** | Right track; UART0 RX |
+| **TX / IO43** | 43 | DRV8833 **BIN2** | Right track; UART0 TX |
+| **IO6** | 6 | **Side IR L** | Digital, active LOW, pull-up |
+| **IO7 / D7** | 7 | **Speaker** | Passive piezo (LEDC) |
+| **SDA / IO8** | 8 | I2C **SDA** | OLED, MPU, BH1750, ToF, ADS1115, MAX17048 |
+| **SCL / IO9** | 9 | I2C **SCL** | Same bus |
+| **IO34** | 34 | **IR TX** | 38 kHz fleet ID beacon |
+| *(onboard)* | 17 | RGB power | Firmware drives this |
+| *(onboard)* | 18 | RGB data | NeoPixel — do not reuse |
+| **VBUS** | 33 | 5 V sense | Digital HIGH when USB 5 V present |
+
+Onboard ESP ADC taps are **not** used for pack voltage. Battery / solar / photodiode analog is on the **ADS1115**; cell voltage and state of charge also come from the onboard **MAX17048** (I2C).
 
 ---
 
 ## DRV8833
 
-| TinyC6 | DRV8833 |
-|------:|---------|
-| GPIO **2** | AIN1 (left) |
-| GPIO **3** | AIN2 |
-| GPIO **20** | BIN1 (right) |
-| GPIO **21** | BIN2 |
-| GPIO **16** | **nSLEEP** |
-| **3.3 V** | VCC (logic) | Stays up from the 400 mAh even if boost 5 V is dead |
-| **GND** | GND | Common with both packs |
-| Boost **5 V** | **VM** (motor power) | Same 5 V rail as TinyC6 5 V in |
+| TinyS3 | DRV8833 |
+|--------|---------|
+| **IO21** | AIN1 (left) |
+| **IO0** | AIN2 (left) |
+| **IO44** | BIN1 (right) |
+| **IO43** | BIN2 (right) |
+| **3.3 V** | **nSLEEP** and logic VCC. Firmware does **not** drive nSLEEP |
+| Boost **5 V** | **VM** (motor power) |
+| **GND** | GND, common with the battery and all boards |
 
-PWM on IN1/IN2 at **30 kHz**, 8-bit. Dead-band floor **150/255** (do not drop it).
+PWM on IN1/IN2 at **30 kHz**, 8-bit. Dead-band floor **150/255** (do not drop it). Right track is inverted in firmware (`TRACK_INVERT_RIGHT 1`).
 
-**nSLEEP not wired to GPIO16 yet:** jumper the DRV8833 **nSLEEP** pin to **3.3 V** on the chip so the bridge stays awake until you connect GPIO16.
-
-When stopped, firmware pulls nSLEEP **LOW** (once wired). GPIO10 is a 5 V-present flag for the OLED/brain only — it does not block `/cmd_vel`.
+**IO0**, **IO43**, and **IO44** are strap / UART0 pins. Firmware keeps motor PWM at 0 when stopped, but they can glitch at reset or during the ROM boot log — do not rely on the tracks being still in the first moments of boot.
 
 ---
 
-## I2C (OLED / MPU / ToF)
+## I2C (SDA IO8, SCL IO9, 3.3 V)
 
-| Device | Addr | TinyC6 |
-|--------|------|--------|
-| SSD1306 128×64 | **0x3C** | SDA **6**, SCL **7**, 3.3 V |
-| **MPU-6050** | **0x68** | Same bus. AD0 → GND. INT unused. 3.3 V only. |
-| **BH1750** ALS | **0x23** | Same bus. ADDR → GND (or 3.3 V for **0x5C**). 3.3 V only. |
-| VL53L0X (later) | **0x29** | Same bus, 3.3 V, XSHUT floating |
+| Device | Addr | Notes |
+|--------|------|-------|
+| SSD1306 128×64 | **0x3C** | OLED HUD |
+| **MPU-6050** | **0x68** | AD0 to GND. `/bot2/imu` |
+| **BH1750** ALS | **0x23** | ADDR to GND. `/bot2/als/illuminance` |
+| VL53L0X (optional) | **0x29** | `ToF --` until it ACKs |
+| **ADS1115** | 0x48–0x4B (auto-probed) | See ADS1115 channels |
+| **MAX17048** fuel gauge | **0x36** | Onboard LiPo gauge |
 
-OLED HUD shows `IMU` when the MPU ACKs, and lux on the ToF line when the BH1750 ACKs (`120lx`). `/bot2/imu` and `/bot2/als/illuminance`. If yaw looks flipped, set `IMU_GYRO_Z_SIGN` to `-1` in `tracked_pins.h`.
-
-Firmware shows `ToF --` until the VL53L0X ACKs. VL53L1X needs a different driver — say if that is what you fitted.
-
----
-
-## IR (reserved — wire later)
-
-Bot-to-bot ID (all fleet members, different behaviour when they meet) and side bumpers. **3.3 V logic.** TX stays off until we add the ID protocol.
-
-| Role | GPIO | Notes |
-|------|------|--------|
-| IR comm **TX** | **8** | IR LED + resistor (transistor optional). **Not GPIO14** — that pin does not exist on TinyC6. **Not GPIO16** — that is nSLEEP / board TX. |
-| IR comm **RX** | **17** | TSOP-style 38 kHz demod, OUT → GPIO, VCC 3.3 V (board **RX** pin) |
-| Side proximity **L** | **18** | Digital, **LOW = hit**. Firmware pull-up. |
-| Side proximity **R** | **19** | Same |
-
-Either side LOW still sets `/bot2/ir/detected`. **GPIO17** TSOP decodes fleet peer ID on `/bot2/ir/peer` (0=rover, 1=mini, 2=tracked). **GPIO8** TX broadcasts bot2's ID frame.
-
-**GPIO16** is the motor driver **nSLEEP** line — even though the header says "TX", do not wire the IR LED there.
-
-Do **not** hang a TSOP on GPIO **8 / 9** — C6 strapping pins; a LOW at reset can trap boot. TX LED on GPIO8 is OK (firmware holds it off until the beacon starts).
-
-**12 / 13** are USB — leave them.
+The ADS1115 and MAX17048 are each probed once at boot. If one is missing, firmware logs one line and carries on.
 
 ---
 
-## Power (two packs)
+## ADS1115 channels
 
-| Pack | Where it plugs | What it runs |
-|------|----------------|--------------|
-| **~400 mAh** LiPo | TinyC6 **BAT** JST | ESP, OLED, IMU, BH1750, ToF, IR, **solar tilt servo** (3.3 V) |
-| **~500 mAh** + charge/boost | Boost module input | Boost **5 V** → TinyC6 **5 V** pin **and** DRV8833 **VM** (tracks) |
+Gain ±4.096 V, single-shot, one channel per loop.
 
-While boost 5 V is present, the TinyC6 charger keeps the **400 mAh** topped up from that 5 V (same as USB charging). If the 500 mAh / boost goes flat, the ESP **keeps running** on the 400 mAh: WiFi, ROS, sensors, solar tilt. Tracks stop — there is no motor 5 V.
-
-**GND common** across TinyC6, boost board, DRV8833, both packs, servo.
-
-```
-500 mAh  →  charge/boost  →  5 V  →  TinyC6 5V  +  DRV8833 VM
-400 mAh  →  TinyC6 BAT    →  3.3 V →  ESP + I2C + solar servo
-                 ↑ charged from 5 V whenever boost (or USB) is in
-```
-
-GPIO **10** is a **digital** 5 V-present flag (not ADC — analog on this pin panics the C6). GPIO **5** is the **500 mAh pack** divider (ADC). OLED: `E 3.91 M 3.72` plus `5V` or `bat`.
-
-TinyC6 **VBAT_SENSE** (GPIO **4**) is a **1:1 resistor divider** on the 400 mAh (pack/2 at the pin). Firmware uses ADC **11 dB attenuation** so the pin can read ~0–3.1 V (a full 4.2 V cell is ~2.1 V at GPIO4). Default 0 dB only goes to ~1.1 V and reports a stuck ~2.2 V after ×2. `/bot2/battery/voltage` = pin × `VBAT_DIVIDER` (2.0). DMM-check `VBAT_CAL` if a few tenths off.
-
-Do not pull track current through the TinyC6 BAT JST.
+| Ch | Signal | Front end | Topic |
+|----|--------|-----------|-------|
+| A0 | **Left** BPW34 | 4.7k to GND | `/bot2/light/left_v` |
+| A1 | **Right** BPW34 | 4.7k to GND | `/bot2/light/right_v` |
+| A2 | **Main battery** (1S LiPo) | 100k / 100k (×2.0) | `/bot2/power/battery_v` |
+| A3 | **Solar panel** (6 V) | 100k from panel+ to pin, 47k pin to GND (×3.128) | `/bot2/power/solar_v` |
 
 ---
 
-## Solar tilt servo (3.3 V)
+## Fuel gauge (onboard MAX17048, I2C 0x36)
 
-Signal **GPIO 11**. **VCC = TinyC6 3.3 V**, GND common. That way the panel can still hunt after the motor pack dies.
+Raw I2C reads, about 2.5 Hz: VCELL `0x02`, SOC `0x04`. Needs the LiPo on the board JST.
 
-Use a **small** analog servo and **slow** steps. The C6 3.3 V rail is shared with the MCU — a stalling 9 g servo can brown out the board. Firmware does **not** drive the servo yet (no hunt loop); pin is reserved, left idle.
+| Value | Topic |
+|-------|-------|
+| Cell voltage (V) | `/bot2/battery/voltage` |
+| State of charge (%) | `/bot2/battery/percent` |
 
-BH1750 on the panel (or nearby) is the light sensor for that hunt later.
+`/bot2/battery/motor_voltage` is unused (−1). The OLED shows gauge voltage when present.
+
+---
+
+## IR
+
+| Role | Pin | Notes |
+|------|-----|--------|
+| IR comm **TX** | **IO34** | IR LED + series resistor, 38 kHz fleet ID |
+| IR comm **RX** | **IO3** | TSOP OUT to GPIO, VCC 3.3 V |
+| Side proximity **L** | **IO6** | LOW = close (~5 cm) |
+| Side proximity **R** | **IO5** | Same |
+
+Fleet IR id **2**. Peer IDs on `/bot2/ir/peer`. Side sensors on `/bot2/side/left` and `/bot2/side/right`.
+
+---
+
+## Solar tilt servo
+
+Signal **IO4**, **3.3 V** power, GND common. Small slow servo only.
+
+- `/bot2/solar/servo_deg` (Float32), clamped **45–125** (90 = flat).
+- Boot sweep 45 → 125 → 90, then PWM released after each move.
+
+## Speaker
+
+Passive piezo on **IO7**.
 
 ## Status
 
-Onboard NeoPixel: dim blue = ROS idle, green = moving, amber = OTA. RGB power is cut when the LED is off.
+Onboard NeoPixel: dim blue = ROS idle, green = moving, amber = OTA.
 
 ---
 
-## micro-ROS
+## micro-ROS and flashing
 
-Same as before: WiFi → dockerhost UDP **8888**, namespace `/bot2`. Brain is `tracked-brain`. First flash is **USB** (`tracked_wifi_ota_usb`); after that OTA to `tracked-bot.local` with the bot **stopped**.
+Wi-Fi to the NUC micro-ROS agent, UDP **8888**, namespace `/bot2`. Brain is `tracked-brain`. Publisher list: `metas/colcon_tracked.meta`.
+
+First flash over USB (`tracked_s3_usb`), then OTA with `tracked_s3_ota` (hostname `tracked-bot`). Power-cycle after a flash.

@@ -9,12 +9,12 @@ When the user needs to flash tracked-bot WiFi firmware, **always give the OTA co
 
 ```bash
 cd tracked-bot
-pio run -e tracked_wifi_ota -t upload
+pio run -e tracked_s3_ota -t upload
 ```
 
 - Hostname: `tracked-bot.local` (set `upload_port` + `BOT_OTA_HOSTNAME` in `platformio_private.ini`)
 - Bot must be on WiFi with OTA-capable firmware already running
-- First-ever flash: USB `tracked_wifi_ota_usb` on the TinyC6, then OTA only
+- First-ever flash: USB `tracked_s3_usb` on the TinyS3[D], then OTA only
 
 Do not suggest USB unless user explicitly asks.
 
