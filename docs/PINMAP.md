@@ -60,6 +60,8 @@ Unexpected Maker **TinyS3[D]** (ESP32-S3) tracked robot: DRV8833 dual 130 motors
 12. Install **1S LiPo** on JST for fuel gauge and boost source.
 13. Flash `tracked_s3_usb` once, then `tracked_s3_ota` for updates (bot stopped).
 
+**Motors on strapping / UART pins:** left **IN2** is **IO0** (BOOT strap); right **IN1/IN2** are **IO44/IO43** (UART0 RX/TX). Firmware drives all four DRV8833 inputs LOW before PWM init, but the tracks can still twitch at reset or while the ROM prints on UART0 — do not assume they are still during the first moments of boot (see `WIRING.md`).
+
 ## Free pins (TinyS3[D])
 
 | Silk | GPIO | Notes |

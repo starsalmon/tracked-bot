@@ -4,7 +4,15 @@
 
 One **1S 800 mAh LiPo** feeds a boost converter; **5 V** runs the tracks (DRV8833 VM) and the board **5 V** pin. ESP, sensors, and solar tilt servo use **3.3 V**. H-bridge outputs idle low when stopped.
 
-MPU-6050, BH1750, OLED, ToF, ADS1115, and MAX17048 share I2C **SDA IO8 / SCL IO9**. Fleet IR TX/RX, side IR, and speaker are on dedicated GPIOs — see `docs/PINMAP.md` and `WIRING.md`.
+MPU-6050, BH1750, OLED, ToF, ADS1115, and MAX17048 share I2C **SDA IO8 / SCL IO9**. Fleet IR TX/RX, side IR, and speaker are on dedicated GPIOs.
+
+## Docs
+
+| Doc | Contents |
+|-----|----------|
+| [`docs/PINMAP.md`](docs/PINMAP.md) | How-to-build pin map (TinyS3 silk labels) |
+| [`WIRING.md`](WIRING.md) | Harness, I2C devices, IR, power — includes **motor lines on strap/UART pins** (IO0 BOOT, IO43/IO44 UART0) |
+| [`docs/TODO.md`](docs/TODO.md) | Future plans (Tracker + fleet-wide) |
 
 ## Fleet
 
