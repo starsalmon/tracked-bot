@@ -115,7 +115,16 @@ Passive piezo on **IO7**.
 
 ## Status
 
-Onboard NeoPixel: dim blue = ROS idle, green = moving, amber = OTA.
+Onboard NeoPixel (GPIO **17** power, **18** data, GRB, fleet status — brightness 20 on raw values below):
+
+| Phase | Colour (R,G,B) | Pattern |
+|-------|----------------|---------|
+| Boot (350 ms) | 36,36,36 white | Solid |
+| Wi-Fi / transport / grace (45 s) | 160,70,0 amber | 400 ms on / off |
+| Wi-Fi up, no agent (after grace) | 0,0,90 blue | 1200 ms on / off |
+| micro-ROS OK | 0,32,0 green | Solid |
+| Agent lost (reconnect) | 120,0,0 red | 400 ms blink |
+| OTA (overlay) | 32,16,0 amber | Solid while OTA runs |
 
 ---
 

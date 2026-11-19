@@ -27,6 +27,8 @@ No Go button — **tracked-brain wanders as soon as the bot is on WiFi and ROS i
 
 OLED HUD: namespace, WiFi, ROS, IMU, battery, ToF, lux, cmd_vel.
 
+Onboard RGB (NeoPixel **17**/ **18**) matches the fleet ProS3 scheme: boot dim white, amber while Wi-Fi/agent is pending (45 s grace), blue slow blink if Wi-Fi is up but no agent, dim green when micro-ROS is connected, red when reconnecting after a lost agent, solid amber overlay during OTA. Details in [`WIRING.md`](WIRING.md).
+
 ## Flash
 
 **First time (USB)** — new board or after a partition change. Same firmware as OTA; the USB env reuses the OTA micro-ROS library (do not rebuild it from scratch):

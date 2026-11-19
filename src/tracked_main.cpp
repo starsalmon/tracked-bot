@@ -28,6 +28,7 @@
 #include "tracked_ota.h"
 #include "tracked_pins.h"
 #include "tracked_speaker.h"
+#include "tracked_status_led.h"
 #include "tracked_tof.h"
 
 #ifndef BOT_NAMESPACE
@@ -148,19 +149,27 @@ rcl_node_t node;
 rclc_executor_t executor;
 bool ros_ok = false;
 uint8_t ros_init_level = 0;
+bool uros_transport_ready = false;
+bool ros_had_session = false;
+
+TrackedStatusLed status_led;
 
 #define ROS_LOG_FAIL(name, rc) \
   Serial.printf("ROS fail %s: %d\n", (name), static_cast<int>(rc))
 
-void status_rgb(uint8_t r, uint8_t g, uint8_t b) {
-  pinMode(RGB_PWR_PIN, OUTPUT);
-  if (r == 0 && g == 0 && b == 0) {
-    rgbLedWrite(RGB_DATA_PIN, 0, 0, 0);
-    digitalWrite(RGB_PWR_PIN, LOW);
-    return;
-  }
-  digitalWrite(RGB_PWR_PIN, HIGH);
-  rgbLedWrite(RGB_DATA_PIN, r, g, b);
+void status_led_poll(uint32_t now) {
+  TrackedStatusLedInput in;
+  in.wifi_connected = WiFi.status() == WL_CONNECTED;
+  in.uros_transport = uros_transport_ready;
+  in.agent_connected = ros_ok;
+  in.agent_reconnecting = ros_had_session && !ros_ok;
+  status_led.set_input(in);
+#if defined(ENABLE_OTA)
+  status_led.set_ota_active(tracked_ota_busy());
+#else
+  status_led.set_ota_active(false);
+#endif
+  status_led.tick(now);
 }
 
 // ---- MAX17048 fuel gauge (raw I2C, 0x36) ----
@@ -540,6 +549,7 @@ bool create_entities() {
   als_msg.variance = 0.0;
 
   ros_ok = true;
+  ros_had_session = true;
   return true;
 }
 
@@ -592,6 +602,7 @@ bool wait_for_agent(uint32_t timeout_ms) {
       return true;
     }
     Serial.println("waiting for agent...");
+    status_led_poll(millis());
     drive.tick();
     delay(LOOP_MS);
   }
@@ -715,9 +726,7 @@ void setup() {
   Serial.println();
   Serial.println("*** FIRMWARE: tracked TinyS3[D] (ROS /cmd_vel + OTA) ***");
 
-  pinMode(RGB_PWR_PIN, OUTPUT);
-  digitalWrite(RGB_PWR_PIN, HIGH);
-  status_rgb(0, 0, 32);
+  status_led.begin(RGB_DATA_PIN, RGB_PWR_PIN);
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 #if OLED_ENABLED
@@ -815,6 +824,7 @@ void setup() {
     const uint32_t t0 = millis();
     uint32_t last_log = 0, last_scan = 0;
     while (WiFi.status() != WL_CONNECTED) {
+      status_led_poll(millis());
       delay(250);
       const uint32_t el = millis() - t0;
       if (el - last_log >= 3000) {
@@ -844,6 +854,7 @@ void setup() {
     Serial.printf("WiFi joined: IP %s RSSI %d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
   }
   set_microros_wifi_transports(WIFI_SSID, WIFI_PSK, agent_ip, AGENT_PORT);
+  uros_transport_ready = true;
 #if defined(ENABLE_OTA)
   WiFi.setSleep(WIFI_PS_NONE);
 #else
@@ -886,7 +897,7 @@ void loop() {
   tracked_ota_tick();
   if (tracked_ota_busy()) {
     drive.stop();
-    status_rgb(32, 16, 0);
+    status_led_poll(now);
     delay(10);
     return;
   }
@@ -916,6 +927,7 @@ void loop() {
     drive.stop();
     drive.tick();
     oled_draw(now);
+    status_led_poll(now);
     delay(LOOP_MS);
     return;
   }
@@ -937,6 +949,7 @@ void loop() {
         agent_miss = 0;
         destroy_entities();
         drive.stop();
+        status_led_poll(now);
         return;
       }
     } else {
@@ -963,13 +976,7 @@ void loop() {
   ads_tick(now);
   apply_drive();
   drive.tick();
-  if (drive.moving()) {
-    status_rgb(0, 48, 0);
-  } else if (ros_ok) {
-    status_rgb(0, 0, 16);
-  } else {
-    status_rgb(16, 8, 0);
-  }
+  status_led_poll(now);
 
   if (now - last_ir > 100) {
     last_ir = now;
