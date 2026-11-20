@@ -44,7 +44,7 @@ rows = [
  ("8",  "I2C SDA", "IMU, ADS1115, fuel gauge", "pos 18. Board default SDA", C_I2C),
  ("9",  "I2C SCL", "IMU, ADS1115, fuel gauge", "pos 19. Board default SCL", C_I2C),
  ("17", "RGB LED power", "Onboard", "Firmware drives it; off with the LED", C_ONB),
- ("18", "RGB LED data", "Onboard NeoPixel", "Dim blue idle, green moving, amber OTA", C_ONB),
+ ("18", "RGB LED data", "Onboard NeoPixel", "Fleet status LED (boot/network/agent/OTA)", C_ONB),
  ("33", "5 V (VBUS) sense", "Onboard", "Digital, HIGH = USB/boost 5 V present. Not ADC", C_ONB),
  ("10", "Unused", "Nothing connected", "No battery divider on this board (onboard fuel gauge instead). Unassigned in firmware", C_ONB),
  ("1, 2, 35, 36, 37", "Free", "Nothing connected", "Unassigned in firmware", C_FREE),

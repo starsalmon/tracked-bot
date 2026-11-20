@@ -22,10 +22,13 @@ MPU-6050, BH1750, OLED, ToF, ADS1115, and MAX17048 share I2C **SDA IO8 / SCL IO9
 | Agent | dockerhost UDP **8888** |
 | Brain | `tracked-brain` → `explore_then_chase.py` with `BOT_NS=bot2` |
 | Fleet IR id | **2** |
+| ROS QoS | High-rate pubs + `cmd_vel` **best effort**; `solar/servo_deg` **reliable** (see [`WIRING.md`](WIRING.md#qos-fleet-rule)) |
 
 No Go button — **tracked-brain wanders as soon as the bot is on WiFi and ROS is up** (and Allow drive is on). Slow crawl without ToF (`WANDER_BLIND_CRUISE`). ESP hard-brakes forward if ToF is under 12 cm.
 
 OLED HUD: namespace, WiFi, ROS, IMU, battery, ToF, lux, cmd_vel.
+
+Onboard RGB (NeoPixel **17**/ **18**) matches the fleet ProS3 scheme: boot dim white, amber while Wi-Fi/agent is pending (45 s grace), blue slow blink if Wi-Fi is up but no agent, dim green when micro-ROS is connected, red when reconnecting after a lost agent, solid amber overlay during OTA. Details in [`WIRING.md`](WIRING.md).
 
 ## Flash
 

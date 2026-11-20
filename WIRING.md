@@ -115,12 +115,33 @@ Passive piezo on **IO7**.
 
 ## Status
 
-Onboard NeoPixel: dim blue = ROS idle, green = moving, amber = OTA.
+Onboard NeoPixel (GPIO **17** power, **18** data, GRB, fleet status — brightness 20 on raw values below):
+
+| Phase | Colour (R,G,B) | Pattern |
+|-------|----------------|---------|
+| Boot (350 ms) | 36,36,36 white | Solid |
+| Wi-Fi / transport / grace (45 s) | 160,70,0 amber | 400 ms on / off |
+| Wi-Fi up, no agent (after grace) | 0,0,90 blue | 1200 ms on / off |
+| micro-ROS OK | 0,32,0 green | Solid |
+| Agent lost (reconnect) | 120,0,0 red | 400 ms blink |
+| OTA (overlay) | 32,16,0 amber | Solid while OTA runs |
 
 ---
 
 ## micro-ROS and flashing
 
 Wi-Fi to the NUC micro-ROS agent, UDP **8888**, namespace `/bot2`. Brain is `tracked-brain`. Publisher list: `metas/colcon_tracked.meta`.
+
+### QoS (fleet rule)
+
+UDP agent MTU **1400 B** — every message on `/bot2` is well under that.
+
+| Kind | Policy | Topics |
+|------|--------|--------|
+| High-rate sensors / status | **Best effort** | `imu`, `ir/detected`, `ir/peer`, `battery/voltage`, `battery/motor_voltage`, `battery/percent`, `power/battery_v`, `power/solar_v`, `power/boost_5v`, `light/left_v`, `light/right_v`, `sonar/range`, `als/illuminance`, `side/left`, `side/right`, `solar/servo_now`, `wifi/rssi`, `stall` |
+| Commands (brain → bot) | **Best effort** | `cmd_vel` (high-rate stream; ESP enforces 400 ms timeout) |
+| Setpoints | **Reliable** | `solar/servo_deg` |
+
+`stall` is published every **100 ms** as `false` (placeholder). If real stall detection is added, switch that publisher to **on-change + reliable** instead.
 
 First flash over USB (`tracked_s3_usb`), then OTA with `tracked_s3_ota` (hostname `tracked-bot`). Power-cycle after a flash.

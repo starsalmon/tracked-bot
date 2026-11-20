@@ -28,6 +28,7 @@
 #include "tracked_ota.h"
 #include "tracked_pins.h"
 #include "tracked_speaker.h"
+#include "tracked_status_led.h"
 #include "tracked_tof.h"
 
 #ifndef BOT_NAMESPACE
@@ -148,19 +149,27 @@ rcl_node_t node;
 rclc_executor_t executor;
 bool ros_ok = false;
 uint8_t ros_init_level = 0;
+bool uros_transport_ready = false;
+bool ros_had_session = false;
+
+TrackedStatusLed status_led;
 
 #define ROS_LOG_FAIL(name, rc) \
   Serial.printf("ROS fail %s: %d\n", (name), static_cast<int>(rc))
 
-void status_rgb(uint8_t r, uint8_t g, uint8_t b) {
-  pinMode(RGB_PWR_PIN, OUTPUT);
-  if (r == 0 && g == 0 && b == 0) {
-    rgbLedWrite(RGB_DATA_PIN, 0, 0, 0);
-    digitalWrite(RGB_PWR_PIN, LOW);
-    return;
-  }
-  digitalWrite(RGB_PWR_PIN, HIGH);
-  rgbLedWrite(RGB_DATA_PIN, r, g, b);
+void status_led_poll(uint32_t now) {
+  TrackedStatusLedInput in;
+  in.wifi_connected = WiFi.status() == WL_CONNECTED;
+  in.uros_transport = uros_transport_ready;
+  in.agent_connected = ros_ok;
+  in.agent_reconnecting = ros_had_session && !ros_ok;
+  status_led.set_input(in);
+#if defined(ENABLE_OTA)
+  status_led.set_ota_active(tracked_ota_busy());
+#else
+  status_led.set_ota_active(false);
+#endif
+  status_led.tick(now);
 }
 
 // ---- MAX17048 fuel gauge (raw I2C, 0x36) ----
@@ -395,63 +404,63 @@ bool create_entities() {
   }
   ros_init_level = 2;
 
-  rc = rclc_publisher_init_default(&imu_pub, &node,
-                                   ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "imu");
+  rc = rclc_publisher_init_best_effort(&imu_pub, &node,
+                                       ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "imu");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub imu", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &ir_detected_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "ir/detected");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub ir/detected", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &ir_peer_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt8), "ir/peer");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub ir/peer", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(&stall_pub, &node,
-                                   ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "stall");
+  rc = rclc_publisher_init_best_effort(&stall_pub, &node,
+                                      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "stall");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub stall", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &battery_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "battery/voltage");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub battery/voltage", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &pack2_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "battery/motor_voltage");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub battery/motor_voltage", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &boost_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "power/boost_5v");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub power/boost_5v", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &range_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Range), "sonar/range");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub sonar/range", rc);
     destroy_entities();
     return false;
   }
-  rc = rclc_publisher_init_default(
+  rc = rclc_publisher_init_best_effort(
       &als_pub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Illuminance), "als/illuminance");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("pub als/illuminance", rc);
@@ -471,7 +480,7 @@ bool create_entities() {
       {&wifi_pub, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32), "wifi/rssi"},
     };
     for (auto& e : extra) {
-      rc = rclc_publisher_init_default(e.p, &node, e.t, e.n);
+      rc = rclc_publisher_init_best_effort(e.p, &node, e.t, e.n);
       if (rc != RCL_RET_OK) {
         ROS_LOG_FAIL(e.n, rc);
         destroy_entities();
@@ -481,7 +490,7 @@ bool create_entities() {
   }
   ros_init_level = 3;
 
-  rc = rclc_subscription_init_default(
+  rc = rclc_subscription_init_best_effort(
       &cmd_sub, &node, ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel");
   if (rc != RCL_RET_OK) {
     ROS_LOG_FAIL("sub cmd_vel", rc);
@@ -540,6 +549,7 @@ bool create_entities() {
   als_msg.variance = 0.0;
 
   ros_ok = true;
+  ros_had_session = true;
   return true;
 }
 
@@ -592,6 +602,7 @@ bool wait_for_agent(uint32_t timeout_ms) {
       return true;
     }
     Serial.println("waiting for agent...");
+    status_led_poll(millis());
     drive.tick();
     delay(LOOP_MS);
   }
@@ -715,9 +726,7 @@ void setup() {
   Serial.println();
   Serial.println("*** FIRMWARE: tracked TinyS3[D] (ROS /cmd_vel + OTA) ***");
 
-  pinMode(RGB_PWR_PIN, OUTPUT);
-  digitalWrite(RGB_PWR_PIN, HIGH);
-  status_rgb(0, 0, 32);
+  status_led.begin(RGB_DATA_PIN, RGB_PWR_PIN);
 
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 #if OLED_ENABLED
@@ -815,6 +824,7 @@ void setup() {
     const uint32_t t0 = millis();
     uint32_t last_log = 0, last_scan = 0;
     while (WiFi.status() != WL_CONNECTED) {
+      status_led_poll(millis());
       delay(250);
       const uint32_t el = millis() - t0;
       if (el - last_log >= 3000) {
@@ -844,6 +854,7 @@ void setup() {
     Serial.printf("WiFi joined: IP %s RSSI %d\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
   }
   set_microros_wifi_transports(WIFI_SSID, WIFI_PSK, agent_ip, AGENT_PORT);
+  uros_transport_ready = true;
 #if defined(ENABLE_OTA)
   WiFi.setSleep(WIFI_PS_NONE);
 #else
@@ -886,7 +897,7 @@ void loop() {
   tracked_ota_tick();
   if (tracked_ota_busy()) {
     drive.stop();
-    status_rgb(32, 16, 0);
+    status_led_poll(now);
     delay(10);
     return;
   }
@@ -916,6 +927,7 @@ void loop() {
     drive.stop();
     drive.tick();
     oled_draw(now);
+    status_led_poll(now);
     delay(LOOP_MS);
     return;
   }
@@ -937,6 +949,7 @@ void loop() {
         agent_miss = 0;
         destroy_entities();
         drive.stop();
+        status_led_poll(now);
         return;
       }
     } else {
@@ -963,13 +976,7 @@ void loop() {
   ads_tick(now);
   apply_drive();
   drive.tick();
-  if (drive.moving()) {
-    status_rgb(0, 48, 0);
-  } else if (ros_ok) {
-    status_rgb(0, 0, 16);
-  } else {
-    status_rgb(16, 8, 0);
-  }
+  status_led_poll(now);
 
   if (now - last_ir > 100) {
     last_ir = now;

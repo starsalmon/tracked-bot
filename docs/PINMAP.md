@@ -29,7 +29,7 @@ Unexpected Maker **TinyS3[D]** (ESP32-S3) tracked robot: DRV8833 dual 130 motors
 | GND | — | Common ground | Battery (−), DRV8833, peripherals | Single return |
 | VBUS | 33 | USB / 5 V present (digital) | Onboard sense only | HIGH = 5 V on USB pin; not ADC |
 | NEOPIXEL_POWER | 17 | RGB LED supply enable | Onboard LED | Driven HIGH in firmware |
-| NEOPIXEL | 18 | RGB LED data | Onboard WS2812 | Status colours only |
+| NEOPIXEL | 18 | RGB LED data | Onboard WS2812 | Fleet status (GRB); see WIRING.md |
 | BAT / JST | — | 1S LiPo | Cell +/− via JST | Onboard MAX17048 |
 | USB-C | — | Flash / debug | Host PC | Native CDC |
 
