@@ -22,6 +22,7 @@ MPU-6050, BH1750, OLED, ToF, ADS1115, and MAX17048 share I2C **SDA IO8 / SCL IO9
 | Agent | dockerhost UDP **8888** |
 | Brain | `tracked-brain` → `explore_then_chase.py` with `BOT_NS=bot2` |
 | Fleet IR id | **2** |
+| ROS QoS | High-rate pubs + `cmd_vel` **best effort**; `solar/servo_deg` **reliable** (see [`WIRING.md`](WIRING.md#qos-fleet-rule)) |
 
 No Go button — **tracked-brain wanders as soon as the bot is on WiFi and ROS is up** (and Allow drive is on). Slow crawl without ToF (`WANDER_BLIND_CRUISE`). ESP hard-brakes forward if ToF is under 12 cm.
 

@@ -132,4 +132,16 @@ Onboard NeoPixel (GPIO **17** power, **18** data, GRB, fleet status — brightne
 
 Wi-Fi to the NUC micro-ROS agent, UDP **8888**, namespace `/bot2`. Brain is `tracked-brain`. Publisher list: `metas/colcon_tracked.meta`.
 
+### QoS (fleet rule)
+
+UDP agent MTU **1400 B** — every message on `/bot2` is well under that.
+
+| Kind | Policy | Topics |
+|------|--------|--------|
+| High-rate sensors / status | **Best effort** | `imu`, `ir/detected`, `ir/peer`, `battery/voltage`, `battery/motor_voltage`, `battery/percent`, `power/battery_v`, `power/solar_v`, `power/boost_5v`, `light/left_v`, `light/right_v`, `sonar/range`, `als/illuminance`, `side/left`, `side/right`, `solar/servo_now`, `wifi/rssi`, `stall` |
+| Commands (brain → bot) | **Best effort** | `cmd_vel` (high-rate stream; ESP enforces 400 ms timeout) |
+| Setpoints | **Reliable** | `solar/servo_deg` |
+
+`stall` is published every **100 ms** as `false` (placeholder). If real stall detection is added, switch that publisher to **on-change + reliable** instead.
+
 First flash over USB (`tracked_s3_usb`), then OTA with `tracked_s3_ota` (hostname `tracked-bot`). Power-cycle after a flash.
